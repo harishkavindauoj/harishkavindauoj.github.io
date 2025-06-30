@@ -453,7 +453,7 @@ canvas {
 }
 
 
-/* Tech Stack Section Styling - Fixed */
+/* Tech Stack Section - Fixed Version */
 .tech-stack {
     color: #f0f0f0;
     padding: 50px 20px;
@@ -478,6 +478,9 @@ canvas {
     gap: 30px;
     margin-top: 40px;
     padding: 20px 0;
+    max-width: 1200px;
+    margin-left: auto;
+    margin-right: auto;
 }
 
 .tech-item {
@@ -492,6 +495,7 @@ canvas {
     transition: all 0.3s ease;
     min-height: 160px;
     width: 140px;
+    position: relative;
 }
 
 .tech-item:hover {
@@ -506,7 +510,6 @@ canvas {
     height: 80px;
     object-fit: contain;
     display: block;
-    margin: auto;
     filter: brightness(0.9);
     transition: all 0.3s ease;
 }
@@ -516,6 +519,44 @@ canvas {
     transform: scale(1.1);
 }
 
+/* Add tech labels */
+.tech-item::after {
+    content: attr(data-tech);
+    position: absolute;
+    bottom: 10px;
+    left: 50%;
+    transform: translateX(-50%);
+    font-size: 0.8rem;
+    color: #ffd700;
+    font-family: 'Departure Mono', monospace;
+    text-align: center;
+    opacity: 0;
+    transition: opacity 0.3s ease;
+}
+
+.tech-item:hover::after {
+    opacity: 1;
+}
+
+/* Responsive design */
+@media (max-width: 768px) {
+    .tech-icons {
+        grid-template-columns: repeat(3, 1fr);
+        gap: 20px;
+    }
+    
+    .tech-item {
+        width: 100px;
+        min-height: 120px;
+        padding: 15px;
+    }
+    
+    .tech-item img {
+        width: 60px;
+        height: 60px;
+    }
+}
+
 @media (max-width: 480px) {
     .tech-icons {
         grid-template-columns: repeat(2, 1fr);
@@ -523,8 +564,8 @@ canvas {
     }
     
     .tech-item {
-        width: 100px;
-        min-height: 120px;
+        width: 90px;
+        min-height: 100px;
         padding: 10px;
     }
     
@@ -533,7 +574,6 @@ canvas {
         height: 50px;
     }
 }
-
 /* Project stats */
 .project-stats {
     margin-top: auto;
