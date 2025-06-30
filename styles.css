@@ -316,3 +316,65 @@ canvas {
     border-radius: 15px;
     box-shadow: 0px 5px 15px rgba(0, 0, 0, 0.5);
 }
+
+/* Add these styles to your existing styles.css */
+
+/* Tech badges for projects */
+.tech-badges {
+    margin-top: 10px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 5px;
+}
+
+.tech-badge {
+    background: rgba(255, 215, 0, 0.1);
+    color: #ffd700;
+    padding: 2px 8px;
+    border-radius: 10px;
+    font-size: 0.8rem;
+    border: 1px solid rgba(255, 215, 0, 0.3);
+}
+
+/* Project stats */
+.project-stats {
+    margin-top: 10px;
+    display: flex;
+    gap: 15px;
+    font-size: 0.9rem;
+    color: #ccc;
+}
+
+.project-stats span {
+    display: flex;
+    align-items: center;
+    gap: 3px;
+}
+
+/* Animation for updated content */
+.project-card.updated {
+    animation: highlightUpdate 2s ease-in-out;
+}
+
+@keyframes highlightUpdate {
+    0% { 
+        border-color: #ffd700;
+        box-shadow: 0 0 15px rgba(255, 215, 0, 0.5);
+    }
+    100% { 
+        border-color: rgba(255, 215, 0, 0.3);
+        box-shadow: none;
+    }
+}
+
+/* Last updated indicator */
+.portfolio-metadata {
+    text-align: center;
+    margin: 20px 0;
+    font-size: 0.9rem;
+    color: #888;
+}
+
+.portfolio-metadata .last-updated {
+    color: #ffd700;
+}
