@@ -23,8 +23,8 @@ jobs:
     - name: Update portfolio
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        YOUTUBE_API_KEY: ${{ secrets.YOUTUBE_API_KEY }}
-        YOUTUBE_CHANNEL_ID: ${{ secrets.YOUTUBE_CHANNEL_ID }}
+        GOOGLE_DRIVE_API_KEY: ${{ secrets.GOOGLE_DRIVE_API_KEY }}
+        GOOGLE_DRIVE_FOLDER_ID: ${{ secrets.GOOGLE_DRIVE_FOLDER_ID }}  # Your Google Drive folder ID containing videos
       run: |
         curl -s -H "Authorization: token $GITHUB_TOKEN" \
              -H "Accept: application/vnd.github.v3+json" \
@@ -36,21 +36,22 @@ jobs:
         const https = require('https');
 
         const GITHUB_REPOS = JSON.parse(fs.readFileSync('repos.json', 'utf8'));
-        const API_KEY = process.env.YOUTUBE_API_KEY;
-        const CHANNEL_ID = process.env.YOUTUBE_CHANNEL_ID;
+        const API_KEY = process.env.GOOGLE_DRIVE_API_KEY;
+        const FOLDER_ID = process.env.GOOGLE_DRIVE_FOLDER_ID;
 
         let html = fs.readFileSync('index.html', 'utf8');
 
-        function fetchYouTubeVideos() {
-          if (!API_KEY || !CHANNEL_ID) {
-            console.log('YouTube API credentials missing, skipping video fetch');
+        function fetchDriveVideos() {
+          if (!API_KEY || !FOLDER_ID) {
+            console.log('Google Drive API credentials missing, skipping video fetch');
             return Promise.resolve([]);
           }
 
-          const url = `https://www.googleapis.com/youtube/v3/search?key=${API_KEY}&channelId=${CHANNEL_ID}&part=snippet&order=date&maxResults=50&type=video`;
+          // Fetch files from Google Drive folder
+          const url = `https://www.googleapis.com/drive/v3/files?key=${API_KEY}&q='${FOLDER_ID}'+in+parents+and+mimeType+contains+'video'&fields=files(id,name,webViewLink,webContentLink,thumbnailLink,videoMediaMetadata)&pageSize=100`;
           
           return new Promise((resolve, reject) => {
-            console.log('Fetching YouTube videos...');
+            console.log('Fetching Google Drive videos...');
             
             https.get(url, res => {
               let data = '';
@@ -60,27 +61,27 @@ jobs:
                   const json = JSON.parse(data);
                   
                   if (json.error) {
-                    console.error('YouTube API Error:', json.error.message);
+                    console.error('Google Drive API Error:', json.error.message);
                     resolve([]);
                     return;
                   }
                   
-                  const videos = json.items || [];
-                  console.log(`Found ${videos.length} YouTube videos`);
+                  const videos = json.files || [];
+                  console.log(`Found ${videos.length} videos in Google Drive folder`);
                   
-                  // Log video titles for debugging
+                  // Log video names for debugging
                   videos.forEach((video, index) => {
-                    console.log(`Video ${index + 1}: ${video.snippet?.title}`);
+                    console.log(`Video ${index + 1}: ${video.name}`);
                   });
                   
                   resolve(videos);
                 } catch (err) {
-                  console.error('Error parsing YouTube response:', err.message);
+                  console.error('Error parsing Google Drive response:', err.message);
                   resolve([]);
                 }
               });
             }).on('error', err => {
-              console.error('Error fetching YouTube videos:', err.message);
+              console.error('Error fetching Google Drive videos:', err.message);
               resolve([]);
             });
           });
@@ -103,14 +104,15 @@ jobs:
           
           for (const term of searchTerms) {
             const match = videos.find(video => {
-              const title = video.snippet?.title?.toLowerCase() || '';
-              const description = video.snippet?.description?.toLowerCase() || '';
+              const fileName = video.name?.toLowerCase() || '';
               
-              return title.includes(term) || description.includes(term);
+              return fileName.includes(term) || 
+                     fileName.replace(/[-_]/g, ' ').includes(term) ||
+                     fileName.replace(/[-_]/g, '').includes(term);
             });
             
             if (match) {
-              console.log(`Found matching video for ${repoName}: ${match.snippet.title}`);
+              console.log(`Found matching video for ${repoName}: ${match.name}`);
               return match;
             }
           }
@@ -119,9 +121,14 @@ jobs:
           return null;
         }
 
+        function getVideoEmbedUrl(fileId) {
+          // Create embeddable Google Drive video URL
+          return `https://drive.google.com/file/d/${fileId}/preview`;
+        }
+
         (async () => {
           try {
-            const youTubeVideos = await fetchYouTubeVideos();
+            const driveVideos = await fetchDriveVideos();
 
             const repos = GITHUB_REPOS
               .filter(repo => !repo.fork && !repo.private && repo.description && repo.description.length > 10 &&
@@ -146,33 +153,34 @@ jobs:
               console.log(`Processing repo: ${repo.name} (${repo.stargazers_count} stars)`);
 
               // Find matching video with improved logic
-              const matchedVideo = findMatchingVideo(repo.name, youTubeVideos);
+              const matchedVideo = findMatchingVideo(repo.name, driveVideos);
 
               let videoEmbed = '';
-              if (matchedVideo && matchedVideo.id && matchedVideo.id.videoId) {
-                console.log(`Adding YouTube embed for ${repo.name}`);
+              if (matchedVideo && matchedVideo.id) {
+                const embedUrl = getVideoEmbedUrl(matchedVideo.id);
+                console.log(`Adding Google Drive embed for ${repo.name}: ${matchedVideo.id}`);
                 videoEmbed = `
                   <div class="video-container">
                     <iframe width="100%" height="200" 
-                      src="https://www.youtube.com/embed/${matchedVideo.id.videoId}" 
+                      src="${embedUrl}" 
                       frameborder="0" 
-                      allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" 
+                      allow="autoplay; encrypted-media" 
                       allowfullscreen 
                       style="border-radius: 8px; margin: 10px 0;">
                     </iframe>
+                    <div class="video-info" style="font-size: 12px; color: #888; margin-top: 5px;">
+                      📹 ${matchedVideo.name}
+                    </div>
                   </div>`;
               } else {
-                // Check if local video file exists (fallback)
-                const videoFileName = repo.name.toLowerCase() + '.mp4';
-                console.log(`Using fallback video: ${videoFileName}`);
+                // Fallback placeholder
+                console.log(`No video found for ${repo.name}, showing placeholder`);
                 videoEmbed = `
-                  <div class="video-container">
-                    <video autoplay muted loop style="width: 100%; max-height: 200px; border-radius: 8px; margin: 10px 0;" onerror="this.style.display='none'">
-                      <source src="videos/${videoFileName}" type="video/mp4">
-                      <div style="padding: 20px; text-align: center; background: #1a1a1a; border-radius: 8px; color: #666;">
-                        No preview available
-                      </div>
-                    </video>
+                  <div class="video-placeholder" style="width: 100%; height: 200px; background: linear-gradient(135deg, #1a1a1a, #2a2a2a); border-radius: 8px; margin: 10px 0; display: flex; align-items: center; justify-content: center; color: #666;">
+                    <div style="text-align: center;">
+                      <div style="font-size: 48px; margin-bottom: 10px;">🎬</div>
+                      <div>Demo video coming soon</div>
+                    </div>
                   </div>`;
               }
 
