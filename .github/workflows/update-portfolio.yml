@@ -79,37 +79,37 @@ jobs:
           const videoFileName = repo.name.toLowerCase() + '.mp4';
           
           projectCards += `
-        <div class="project-card">
-            <div class="project-content">
-                <h3><a href="${repo.html_url}" target="_blank" style="color: #ffd700; text-decoration: none;">${name}</a></h3>
-                <p>${description}</p>
-                <div class="project-video">
-                    <video controls muted preload="metadata">
-                        <source src="videos/${videoFileName}" type="video/mp4">
-                        Your browser does not support the video tag.
-                    </video>
-                </div>
-                <div class="project-stats">
-                    <span>⭐ ${repo.stargazers_count}</span>
-                    <span>📅 ${date}</span>
-                    ${repo.language ? `<span>💻 ${repo.language}</span>` : ''}
-                </div>
-            </div>
-        </div>`;
+                <div class="project-card">
+                    <div class="project-content">
+                        <h3><a href="${repo.html_url}" target="_blank" style="color: #ffd700; text-decoration: none;">${name}</a></h3>
+                        <p>${description}</p>
+                        <div class="project-video">
+                            <video autoplay muted loop style="width: 100%; max-height: 200px; border-radius: 8px; margin: 10px 0;">
+                                <source src="videos/${videoFileName}" type="video/mp4">
+                                <!-- Fallback content if video doesn't exist -->
+                            </video>
+                        </div>
+                        <div class="project-stats">
+                            <span>⭐ ${repo.stargazers_count}</span>
+                            <span>📅 ${date}</span>
+                            ${repo.language ? `<span>💻 ${repo.language}</span>` : ''}
+                        </div>
+                    </div>
+                </div>`;
         });
         
         // Add See More card
         projectCards += `
-        <div class="project-card">
-            <div class="project-content" style="display: flex; justify-content: center; align-items: center; height: 180px;">
-                <h3><a href="https://github.com/harishkavindauoj?tab=repositories" target="_blank" style="font-size: 3rem; color: #ffd700; text-decoration: none;">See More..</a></h3>
-            </div>
-        </div>`;
+                <div class="project-card">
+                    <div class="project-content" style="display: flex; justify-content: center; align-items: center; height: 180px;">
+                        <h3><a href="https://github.com/harishkavindauoj?tab=repositories" target="_blank" style="font-size: 4rem; color: #ffd700; text-decoration: none;">See More..</a></h3>
+                    </div>
+                </div>`;
         
         // Replace project cards in HTML
         const regex = /<div class="project-cards">[\s\S]*?<\/div>/;
         const replacement = `<div class="project-cards">${projectCards}
-    </div>`;
+            </div>`;
         
         html = html.replace(regex, replacement);
         
@@ -126,7 +126,7 @@ jobs:
 
         
         // Look for existing metadata or add before footer
-        const metadataHtml = `                    <div class="portfolio-metadata">Last updated: <span class="last-updated">${now}</span></div>`;
+        const metadataHtml = `    <div class="portfolio-metadata">Last updated: <span class="last-updated">${now}</span></div>`;
         
         if (html.includes('portfolio-metadata')) {
           html = html.replace(/<div class="portfolio-metadata">.*?<\/div>/, metadataHtml);
