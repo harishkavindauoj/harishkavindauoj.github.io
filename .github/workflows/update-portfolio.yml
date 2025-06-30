@@ -1,8 +1,8 @@
-name: Update Portfolio
+name: Update Portfolio (Debug Version)
 
 on:
   schedule:
-    - cron: '0 2 * * *'  # Daily at 2 AM UTC
+    - cron: '0 2 * * *'
   workflow_dispatch:
 
 jobs:
@@ -24,7 +24,7 @@ jobs:
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         GOOGLE_DRIVE_API_KEY: ${{ secrets.GOOGLE_DRIVE_API_KEY }}
-        GOOGLE_DRIVE_FOLDER_ID: ${{ secrets.GOOGLE_DRIVE_FOLDER_ID }}  # Your Google Drive folder ID containing videos
+        GOOGLE_DRIVE_FOLDER_ID: ${{ secrets.GOOGLE_DRIVE_FOLDER_ID }}
       run: |
         curl -s -H "Authorization: token $GITHUB_TOKEN" \
              -H "Accept: application/vnd.github.v3+json" \
@@ -47,11 +47,11 @@ jobs:
             return Promise.resolve([]);
           }
 
-          // Fetch files from Google Drive folder
-          const url = `https://www.googleapis.com/drive/v3/files?key=${API_KEY}&q='${FOLDER_ID}'+in+parents+and+mimeType+contains+'video'&fields=files(id,name,webViewLink,webContentLink,thumbnailLink,videoMediaMetadata)&pageSize=100`;
+          const url = `https://www.googleapis.com/drive/v3/files?key=${API_KEY}&q='${FOLDER_ID}'+in+parents+and+(mimeType+contains+'video'+or+name+contains+'.mp4'+or+name+contains+'.avi'+or+name+contains+'.mov'+or+name+contains+'.mkv')&fields=files(id,name,webViewLink,webContentLink,thumbnailLink,videoMediaMetadata,mimeType)&pageSize=100`;
           
           return new Promise((resolve, reject) => {
-            console.log('Fetching Google Drive videos...');
+            console.log('🔍 Fetching Google Drive videos...');
+            console.log('API URL:', url.replace(API_KEY, 'HIDDEN_KEY'));
             
             https.get(url, res => {
               let data = '';
@@ -61,27 +61,33 @@ jobs:
                   const json = JSON.parse(data);
                   
                   if (json.error) {
-                    console.error('Google Drive API Error:', json.error.message);
+                    console.error('❌ Google Drive API Error:', json.error.message);
+                    console.error('Error details:', JSON.stringify(json.error, null, 2));
                     resolve([]);
                     return;
                   }
                   
                   const videos = json.files || [];
-                  console.log(`Found ${videos.length} videos in Google Drive folder`);
+                  console.log(`✅ Found ${videos.length} videos in Google Drive folder`);
                   
-                  // Log video names for debugging
+                  // Enhanced debugging: show all video details
                   videos.forEach((video, index) => {
-                    console.log(`Video ${index + 1}: ${video.name}`);
+                    console.log(`📹 Video ${index + 1}:`);
+                    console.log(`   Name: "${video.name}"`);
+                    console.log(`   ID: ${video.id}`);
+                    console.log(`   MimeType: ${video.mimeType}`);
+                    console.log(`   ---`);
                   });
                   
                   resolve(videos);
                 } catch (err) {
-                  console.error('Error parsing Google Drive response:', err.message);
+                  console.error('❌ Error parsing Google Drive response:', err.message);
+                  console.error('Response data:', data.substring(0, 500) + '...');
                   resolve([]);
                 }
               });
             }).on('error', err => {
-              console.error('Error fetching Google Drive videos:', err.message);
+              console.error('❌ Error fetching Google Drive videos:', err.message);
               resolve([]);
             });
           });
@@ -96,38 +102,102 @@ jobs:
         }
 
         function findMatchingVideo(repoName, videos) {
+          console.log(`🔍 Looking for video matching repo: "${repoName}"`);
+          
+          // Create multiple search variations
           const searchTerms = [
-            repoName.toLowerCase(),
-            repoName.replace(/[-_]/g, ' ').toLowerCase(),
-            repoName.replace(/[-_]/g, '').toLowerCase()
+            repoName.toLowerCase(),                           // exact lowercase
+            repoName.replace(/[-_]/g, ' ').toLowerCase(),     // with spaces
+            repoName.replace(/[-_]/g, '').toLowerCase(),      // no separators
+            repoName.replace(/[-_]/g, '-').toLowerCase(),     // with dashes
+            repoName.replace(/[-_]/g, '_').toLowerCase(),     // with underscores
+            repoName.split(/[-_]/).join(' ').toLowerCase(),   // words separated by spaces
+            repoName.split(/[-_]/).join('').toLowerCase(),    // concatenated words
           ];
           
+          console.log(`   Search terms: [${searchTerms.map(t => `"${t}"`).join(', ')}]`);
+          
           for (const term of searchTerms) {
+            console.log(`   Trying term: "${term}"`);
+            
             const match = videos.find(video => {
-              const fileName = video.name?.toLowerCase() || '';
+              const fileName = (video.name || '').toLowerCase();
+              const fileNameNoExt = fileName.replace(/\.(mp4|avi|mov|mkv|webm)$/i, '');
               
-              return fileName.includes(term) || 
-                     fileName.replace(/[-_]/g, ' ').includes(term) ||
-                     fileName.replace(/[-_]/g, '').includes(term);
+              // Multiple matching strategies
+              const matches = [
+                fileName.includes(term),                      // direct inclusion
+                fileNameNoExt.includes(term),                // without extension
+                fileName.replace(/[-_\s]/g, '').includes(term.replace(/[-_\s]/g, '')), // normalized
+                term.includes(fileNameNoExt),                // reverse check
+                fileNameNoExt.includes(term.split(' ')[0]),  // first word match
+              ];
+              
+              const isMatch = matches.some(Boolean);
+              if (isMatch) {
+                console.log(`     ✅ Match found with "${fileName}" using strategy: ${matches.findIndex(Boolean)}`);
+              }
+              
+              return isMatch;
             });
             
             if (match) {
-              console.log(`Found matching video for ${repoName}: ${match.name}`);
+              console.log(`🎯 Found matching video for "${repoName}": "${match.name}"`);
               return match;
             }
           }
           
-          console.log(`No matching video found for ${repoName}`);
+          console.log(`❌ No matching video found for "${repoName}"`);
+          console.log(`   Available videos: [${videos.map(v => `"${v.name}"`).join(', ')}]`);
           return null;
         }
 
         function getVideoEmbedUrl(fileId) {
-          // Create embeddable Google Drive video URL
           return `https://drive.google.com/file/d/${fileId}/preview`;
+        }
+
+        function testDriveAccess() {
+          if (!API_KEY || !FOLDER_ID) {
+            console.log('⚠️  Missing Google Drive credentials');
+            return;
+          }
+          
+          console.log('🔧 Testing Google Drive access...');
+          console.log('   API Key length:', API_KEY.length);
+          console.log('   Folder ID:', FOLDER_ID);
+          
+          // Test basic API access
+          const testUrl = `https://www.googleapis.com/drive/v3/files/${FOLDER_ID}?key=${API_KEY}&fields=id,name,mimeType`;
+          
+          return new Promise((resolve) => {
+            https.get(testUrl, res => {
+              let data = '';
+              res.on('data', chunk => data += chunk);
+              res.on('end', () => {
+                try {
+                  const json = JSON.parse(data);
+                  if (json.error) {
+                    console.log('❌ Folder access test failed:', json.error.message);
+                  } else {
+                    console.log('✅ Folder access test passed:', json.name || 'Unnamed folder');
+                  }
+                } catch (err) {
+                  console.log('❌ Folder access test error:', err.message);
+                }
+                resolve();
+              });
+            }).on('error', err => {
+              console.log('❌ Network error during folder test:', err.message);
+              resolve();
+            });
+          });
         }
 
         (async () => {
           try {
+            // Test Drive access first
+            await testDriveAccess();
+            
             const driveVideos = await fetchDriveVideos();
 
             const repos = GITHUB_REPOS
@@ -138,7 +208,8 @@ jobs:
               .sort((a, b) => new Date(b.updated_at) - new Date(a.updated_at))
               .slice(0, 5);
 
-            console.log(`Found ${repos.length} repositories to display:`);
+            console.log(`\n📊 Processing ${repos.length} repositories:`);
+            repos.forEach((repo, i) => console.log(`   ${i+1}. ${repo.name}`));
 
             let projectCards = '';
             for (const repo of repos) {
@@ -150,15 +221,17 @@ jobs:
                 day: 'numeric'
               });
 
-              console.log(`Processing repo: ${repo.name} (${repo.stargazers_count} stars)`);
+              console.log(`\n🔄 Processing repo: "${repo.name}" (${repo.stargazers_count} stars)`);
 
-              // Find matching video with improved logic
               const matchedVideo = findMatchingVideo(repo.name, driveVideos);
 
               let videoEmbed = '';
               if (matchedVideo && matchedVideo.id) {
                 const embedUrl = getVideoEmbedUrl(matchedVideo.id);
-                console.log(`Adding Google Drive embed for ${repo.name}: ${matchedVideo.id}`);
+                console.log(`✅ Adding Google Drive embed for "${repo.name}"`);
+                console.log(`   Video: "${matchedVideo.name}"`);
+                console.log(`   Embed URL: ${embedUrl}`);
+                
                 videoEmbed = `
                   <div class="video-container">
                     <iframe width="100%" height="200" 
@@ -173,13 +246,13 @@ jobs:
                     </div>
                   </div>`;
               } else {
-                // Fallback placeholder
-                console.log(`No video found for ${repo.name}, showing placeholder`);
+                console.log(`❌ No video found for "${repo.name}", showing placeholder`);
                 videoEmbed = `
                   <div class="video-placeholder" style="width: 100%; height: 200px; background: linear-gradient(135deg, #1a1a1a, #2a2a2a); border-radius: 8px; margin: 10px 0; display: flex; align-items: center; justify-content: center; color: #666;">
                     <div style="text-align: center;">
                       <div style="font-size: 48px; margin-bottom: 10px;">🎬</div>
                       <div>Demo video coming soon</div>
+                      <div style="font-size: 10px; margin-top: 5px;">Looking for: ${repo.name}</div>
                     </div>
                   </div>`;
               }
@@ -228,10 +301,10 @@ jobs:
             }
 
             fs.writeFileSync('index.html', html);
-            console.log('Portfolio updated successfully!');
+            console.log('\n🎉 Portfolio updated successfully!');
             
           } catch (error) {
-            console.error('Error updating portfolio:', error.message);
+            console.error('💥 Error updating portfolio:', error.message);
             console.error('Stack trace:', error.stack);
             process.exit(1);
           }
@@ -257,5 +330,5 @@ jobs:
         git config --local user.email "actions@github.com"
         git config --local user.name "GitHub Actions"
         git add index.html
-        git commit -m "🤖 Auto-update portfolio with latest projects"
+        git commit -m "🤖 Auto-update portfolio with latest projects (with video debug)"
         git push
