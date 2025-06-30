@@ -51,12 +51,11 @@ canvas {
 }
 
 .navbar a:hover {
-    color: 
-#ffd700;
+    color: #ffd700;
 }
 
 .hero, .contact-section {
-
+    
     text-align: center;
     font-family: 'Departure Mono', monospace; 
 }
@@ -97,8 +96,7 @@ canvas {
 }
 
 .about-section {
-    color: 
-#f0f0f0;
+    color: #f0f0f0;
     padding: 20px;
     border-radius: 15px;
     background: transparent;
@@ -120,8 +118,7 @@ canvas {
 }
 
 .project-section {
-    color: 
-#f0f0f0;
+    color: #f0f0f0;
     padding: 50px;
     border-radius: 15px;
     background: transparent;
@@ -144,8 +141,7 @@ canvas {
 
 .project h3 {
     font-size: 1.8rem;
-    color: 
-#ffd700;
+    color: #ffd700;
     text-align: center;
     font-family: 'Departure Mono', monospace; 
 }
@@ -157,8 +153,7 @@ canvas {
 }
 
 .tech-stack {
-    color: 
-#f0f0f0;
+    color: #f0f0f0;
     padding: 50px;
     border-radius: 15px;
     background: transparent;
@@ -181,8 +176,7 @@ canvas {
 
 .project-card {
     background: #ffffff0f;
-    color: 
-#f0f0f0;
+    color: #f0f0f0;
     border-radius: 15px;
     box-shadow: 0px 5px 15px rgba(0, 0, 0, 0);
     width: 300px;
@@ -207,8 +201,7 @@ canvas {
 
 .project-content h3 {
     font-size: 1.5rem;
-    color: 
-#ffd700;
+    color: #ffd700;
     margin-bottom: 10px;
     font-family: 'Departure Mono', monospace; 
 }
@@ -220,8 +213,7 @@ canvas {
 }
 
 .contact-section {
-    color: 
-#f0f0f0;
+    color: #f0f0f0;
     padding: 50px;
     border-radius: 15px;
     background: transparent;
@@ -249,9 +241,9 @@ canvas {
     margin: 20px auto;
 }
 
+
 .contact-section {
-    color: 
-#f0f0f0;
+    color: #f0f0f0;
     padding: 50px;
     text-align: center;
     background: #11111100;
@@ -259,6 +251,7 @@ canvas {
     margin-top: 30px;
     box-shadow: 0px 5px 15px rgba(0, 0, 0, 0);
 }
+
 
 .contact-info {
     margin-top: 20px;
@@ -270,8 +263,7 @@ canvas {
 }
 
 .contact-info a {
-    color: 
-#ffd700;
+    color: #ffd700;
     text-decoration: none;
     font-weight: bold;
 }
@@ -305,6 +297,7 @@ canvas {
     transform: scale(1.1);
 }
 
+
 .about-image-container {
     display: flex;
     justify-content: center; 
@@ -312,6 +305,7 @@ canvas {
     width: 100%; 
     padding: 20px; 
 }
+
 
 .about-image {
     width: 100%;
@@ -335,8 +329,7 @@ canvas {
 
 .tech-badge {
     background: rgba(255, 215, 0, 0.1);
-    color: 
-#ffd700;
+    color: #ffd700;
     padding: 2px 8px;
     border-radius: 10px;
     font-size: 0.8rem;
@@ -365,8 +358,7 @@ canvas {
 
 @keyframes highlightUpdate {
     0% { 
-        border-color: 
-#ffd700;
+        border-color: #ffd700;
         box-shadow: 0 0 15px rgba(255, 215, 0, 0.5);
     }
     100% { 
@@ -384,8 +376,7 @@ canvas {
 }
 
 .portfolio-metadata .last-updated {
-    color: 
-#ffd700;
+    color: #ffd700;
 }
 
 /* Project video styling */
@@ -401,8 +392,7 @@ canvas {
     max-height: 200px;
     border-radius: 8px;
     object-fit: cover;
-    background: 
-#1a1a1a;
+    background: #1a1a1a;
 }
 
 /* Hide video if source fails to load */
@@ -410,21 +400,20 @@ canvas {
     display: none;
 }
 
-/* Enhanced project cards for better content flow /
+/* Enhanced project cards for better content flow */
 .project-card {
     background: rgba(255, 255, 255, 0.1);
     border: 1px solid rgba(255, 215, 0, 0.3);
     border-radius: 10px;
     padding: 20px;
     transition: all 0.3s ease;
-    min-height: 300px; / Increased to accommodate video */
+    min-height: 300px; /* Increased to accommodate video */
     display: flex;
     flex-direction: column;
 }
 
 .project-card:hover {
-    border-color: 
-#ffd700;
+    border-color: #ffd700;
     box-shadow: 0 5px 15px rgba(255, 215, 0, 0.2);
     transform: translateY(-2px);
 }
@@ -443,8 +432,7 @@ canvas {
     flex: 1;
     margin-bottom: 10px;
     line-height: 1.5;
-    color: 
-#e0e0e0;
+    color: #e0e0e0;
 }
 
 /* Tech badges for projects */
@@ -457,8 +445,7 @@ canvas {
 
 .tech-badge {
     background: rgba(255, 215, 0, 0.1);
-    color: 
-#ffd700;
+    color: #ffd700;
     padding: 2px 8px;
     border-radius: 10px;
     font-size: 0.8rem;
@@ -494,7 +481,7 @@ canvas {
     .project-cards {
         grid-template-columns: 1fr;
     }
-
+    
     .project-video video {
         max-height: 150px;
     }
@@ -507,8 +494,7 @@ canvas {
 
 @keyframes highlightUpdate {
     0% { 
-        border-color: 
-#ffd700;
+        border-color: #ffd700;
         box-shadow: 0 0 15px rgba(255, 215, 0, 0.5);
     }
     100% { 
@@ -526,6 +512,5 @@ canvas {
 }
 
 .portfolio-metadata .last-updated {
-    color: 
-#ffd700;
+    color: #ffd700;
 }
