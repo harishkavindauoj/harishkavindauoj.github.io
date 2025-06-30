@@ -50,7 +50,7 @@ jobs:
             !repo.name.toLowerCase().includes('readme')
           )
           .sort((a, b) => new Date(b.updated_at) - new Date(a.updated_at))
-          .slice(0, 3);
+          .slice(0, 5);
         
         console.log(`Found ${repos.length} repositories to display:`);
         repos.forEach(repo => console.log(`- ${repo.name}: ${repo.stargazers_count} stars`));
@@ -72,16 +72,23 @@ jobs:
             day: 'numeric'
           });
           
-          // Truncate description if too long
-          const description = repo.description.length > 120 
-            ? repo.description.substring(0, 120) + '...'
-            : repo.description;
+          // Don't truncate description - show full text
+          const description = repo.description;
+          
+          // Video file name based on repository name (lowercase with hyphens)
+          const videoFileName = repo.name.toLowerCase() + '.mp4';
           
           projectCards += `
                 <div class="project-card">
                     <div class="project-content">
                         <h3><a href="${repo.html_url}" target="_blank" style="color: #ffd700; text-decoration: none;">${name}</a></h3>
                         <p>${description}</p>
+                        <div class="project-video">
+                            <video autoplay muted loop style="width: 100%; max-height: 200px; border-radius: 8px; margin: 10px 0;">
+                                <source src="videos/${videoFileName}" type="video/mp4">
+                                <!-- Fallback content if video doesn't exist -->
+                            </video>
+                        </div>
                         <div class="project-stats">
                             <span>⭐ ${repo.stargazers_count}</span>
                             <span>📅 ${date}</span>
