@@ -1,0 +1,190 @@
+name: Portfolio Update on Repository Changes
+
+on:
+  repository_dispatch:
+    types: [repo-updated]
+  workflow_dispatch:
+  schedule:
+    - cron: '0 6 * * *' # Daily at 6 AM UTC
+
+jobs:
+  update-portfolio:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout portfolio repository
+      uses: actions/checkout@v4
+      with:
+        token: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Setup Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.9'
+
+    - name: Install dependencies
+      run: |
+        pip install requests beautifulsoup4 jinja2
+
+    - name: Update portfolio
+      run: |
+        cat > update_portfolio.py << 'EOF'
+        import requests
+        import json
+        from datetime import datetime
+        import re
+        
+        # GitHub API configuration
+        USERNAME = "harishkavindauoj"
+        API_URL = f"https://api.github.com/users/{USERNAME}/repos"
+        
+        def fetch_repositories():
+            """Fetch all public repositories"""
+            headers = {
+                "Authorization": f"token ${{ secrets.GITHUB_TOKEN }}",
+                "Accept": "application/vnd.github.v3+json"
+            }
+            
+            params = {
+                "sort": "updated",
+                "per_page": 100,
+                "type": "owner"
+            }
+            
+            response = requests.get(API_URL, headers=headers, params=params)
+            repos = response.json()
+            
+            # Filter out forks and empty repos
+            filtered_repos = [
+                repo for repo in repos 
+                if not repo['fork'] and 
+                   not repo['private'] and 
+                   repo['description'] and
+                   repo['name'] not in [f'{USERNAME}.github.io', 'config', 'dotfiles']
+            ]
+            
+            return filtered_repos[:10]  # Top 10 most recently updated
+        
+        def get_repo_languages(repo_name):
+            """Get primary languages used in a repository"""
+            headers = {
+                "Authorization": f"token ${{ secrets.GITHUB_TOKEN }}",
+                "Accept": "application/vnd.github.v3+json"
+            }
+            
+            url = f"https://api.github.com/repos/{USERNAME}/{repo_name}/languages"
+            response = requests.get(url, headers=headers)
+            
+            if response.status_code == 200:
+                languages = response.json()
+                return list(languages.keys())[:3]  # Top 3 languages
+            return []
+        
+        def generate_project_html(repos):
+            """Generate HTML for project cards"""
+            html_cards = []
+            
+            for i, repo in enumerate(repos[:3]):  # Show top 3 as cards
+                languages = get_repo_languages(repo['name'])
+                lang_badges = ''.join([
+                    f'<span class="tech-badge">{lang}</span>' 
+                    for lang in languages
+                ])
+                
+                # Format repository name for display
+                display_name = repo['name'].replace('-', ' ').replace('_', ' ')
+                display_name = ' '.join(word.capitalize() for word in display_name.split())
+                
+                # Format dates
+                updated_date = datetime.strptime(
+                    repo['updated_at'], 
+                    "%Y-%m-%dT%H:%M:%SZ"
+                ).strftime("%b %d, %Y")
+                
+                card_html = f'''
+                <div class="project-card">
+                    <div class="project-content">
+                        <h3><a href="{repo['html_url']}" target="_blank" style="color: #ffd700; text-decoration: none;">{display_name}</a></h3>
+                        <p>{repo['description']}</p>
+                        {f'<div class="tech-badges">{lang_badges}</div>' if lang_badges else ''}
+                        <div class="project-stats">
+                            <span>⭐ {repo['stargazers_count']}</span>
+                            <span>📅 {updated_date}</span>
+                        </div>
+                    </div>
+                </div>'''
+                
+                html_cards.append(card_html)
+            
+            # Add "See More" card
+            see_more_card = f'''
+                <div class="project-card">
+                    <div class="project-content" style="display: flex; justify-content: center; align-items: center; height: 180px;">
+                        <h3><a href="https://github.com/{USERNAME}?tab=repositories" target="_blank" style="font-size: 4rem; color: #ffd700; text-decoration: none;">See More..</a></h3>
+                    </div>
+                </div>'''
+            
+            html_cards.append(see_more_card)
+            return '\n'.join(html_cards)
+        
+        def update_html_file(project_html):
+            """Update the index.html file with new project data"""
+            with open('index.html', 'r') as file:
+                content = file.read()
+            
+            # Replace project cards section
+            pattern = r'<div class="project-cards">.*?</div>'
+            replacement = f'<div class="project-cards">\n{project_html}\n            </div>'
+            
+            updated_content = re.sub(pattern, replacement, content, flags=re.DOTALL)
+            
+            # Add last updated timestamp
+            now = datetime.now().strftime("%B %d, %Y at %I:%M %p UTC")
+            
+            # Look for existing metadata or add new one
+            metadata_pattern = r'<div class="portfolio-metadata">.*?</div>'
+            metadata_html = f'<div class="portfolio-metadata">Last updated: <span class="last-updated">{now}</span></div>'
+            
+            if re.search(metadata_pattern, updated_content, re.DOTALL):
+                updated_content = re.sub(metadata_pattern, metadata_html, updated_content, flags=re.DOTALL)
+            else:
+                # Add before the footer
+                footer_pattern = r'(<footer.*?>)'
+                updated_content = re.sub(footer_pattern, f'{metadata_html}\n\n    \\1', updated_content)
+            
+            with open('index.html', 'w') as file:
+                file.write(updated_content)
+        
+        # Main execution
+        if __name__ == "__main__":
+            print("Fetching repositories...")
+            repos = fetch_repositories()
+            
+            print(f"Found {len(repos)} repositories")
+            for repo in repos:
+                print(f"- {repo['name']}: {repo['stargazers_count']} stars")
+            
+            print("Generating HTML...")
+            project_html = generate_project_html(repos)
+            
+            print("Updating index.html...")
+            update_html_file(project_html)
+            
+            print("Portfolio updated successfully!")
+        EOF
+        
+        python update_portfolio.py
+
+    - name: Check for changes
+      id: git-check
+      run: |
+        git diff --exit-code || echo "changed=true" >> $GITHUB_OUTPUT
+
+    - name: Commit and push if changed
+      if: steps.git-check.outputs.changed == 'true'
+      run: |
+        git config --local user.email "actions@github.com"
+        git config --local user.name "GitHub Actions"
+        git add .
+        git commit -m "🚀 Auto-update portfolio ($(date '+%Y-%m-%d %H:%M:%S'))"
+        git push
