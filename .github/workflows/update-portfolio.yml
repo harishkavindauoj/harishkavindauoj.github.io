@@ -23,127 +23,153 @@ jobs:
     - name: Update portfolio
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        YOUTUBE_API_KEY: ${{ secrets.YOUTUBE_API_KEY }}
+        YOUTUBE_CHANNEL_ID: ${{ secrets.YOUTUBE_CHANNEL_ID }}
       run: |
-        # Fetch repositories and save to file
         curl -s -H "Authorization: token $GITHUB_TOKEN" \
              -H "Accept: application/vnd.github.v3+json" \
              "https://api.github.com/users/harishkavindauoj/repos?sort=updated&per_page=50" \
              > repos.json
         
-        # Create and run Node.js script
         cat > update.js << 'EOF'
         const fs = require('fs');
-        
-        // Read files
+        const https = require('https');
+
+        const GITHUB_REPOS = JSON.parse(fs.readFileSync('repos.json', 'utf8'));
+        const API_KEY = process.env.YOUTUBE_API_KEY;
+        const CHANNEL_ID = process.env.YOUTUBE_CHANNEL_ID;
+
         let html = fs.readFileSync('index.html', 'utf8');
-        const allRepos = JSON.parse(fs.readFileSync('repos.json', 'utf8'));
-        
-        // Filter repositories
-        const repos = allRepos
-          .filter(repo => 
-            !repo.fork && 
-            !repo.private && 
-            repo.description && 
-            repo.description.length > 10 &&
-            !repo.name.includes('.github.io') &&
-            !repo.name.includes('config') &&
-            !repo.name.toLowerCase().includes('readme')
-          )
-          .sort((a, b) => new Date(b.updated_at) - new Date(a.updated_at))
-          .slice(0, 5);
-        
-        console.log(`Found ${repos.length} repositories to display:`);
-        repos.forEach(repo => console.log(`- ${repo.name}: ${repo.stargazers_count} stars`));
-        
-        // Generate project cards
-        let projectCards = '';
-        repos.forEach(repo => {
-          // Format repository name for display
-          const name = repo.name
-            .replace(/-/g, ' ')
-            .replace(/_/g, ' ')
+
+        function fetchYouTubeVideos() {
+          const url = `https://www.googleapis.com/youtube/v3/search?key=${API_KEY}&channelId=${CHANNEL_ID}&part=snippet&order=date&maxResults=50`;
+          return new Promise((resolve, reject) => {
+            https.get(url, res => {
+              let data = '';
+              res.on('data', chunk => data += chunk);
+              res.on('end', () => {
+                try {
+                  const json = JSON.parse(data);
+                  resolve(json.items || []);
+                } catch (err) {
+                  reject(err);
+                }
+              });
+            }).on('error', reject);
+          });
+        }
+
+        function formatRepoName(name) {
+          return name
+            .replace(/[-_]/g, ' ')
             .split(' ')
             .map(word => word.charAt(0).toUpperCase() + word.slice(1))
             .join(' ');
-          
-          const date = new Date(repo.updated_at).toLocaleDateString('en-US', {
-            year: 'numeric',
-            month: 'short',
-            day: 'numeric'
-          });
-          
-          // Don't truncate description - show full text
-          const description = repo.description;
-          
-          // Video file name based on repository name (lowercase with hyphens)
-          const videoFileName = repo.name.toLowerCase() + '.mp4';
-          
-          projectCards += `
-                <div class="project-card">
-                    <div class="project-content">
-                        <h3><a href="${repo.html_url}" target="_blank" style="color: #ffd700; text-decoration: none;">${name}</a></h3>
-                        <p>${description}</p>
-                        <div class="project-video">
-                            <video autoplay muted loop style="width: 100%; max-height: 200px; border-radius: 8px; margin: 10px 0;">
-                                <source src="videos/${videoFileName}" type="video/mp4">
-                                <!-- Fallback content if video doesn't exist -->
-                            </video>
-                        </div>
-                        <div class="project-stats">
-                            <span>⭐ ${repo.stargazers_count}</span>
-                            <span>📅 ${date}</span>
-                            ${repo.language ? `<span>💻 ${repo.language}</span>` : ''}
-                        </div>
-                    </div>
-                </div>`;
-        });
-        
-        // Add See More card
-        projectCards += `
-                <div class="project-card">
-                    <div class="project-content" style="display: flex; justify-content: center; align-items: center; height: 180px;">
-                        <h3><a href="https://github.com/harishkavindauoj?tab=repositories" target="_blank" style="font-size: 4rem; color: #ffd700; text-decoration: none;">See More..</a></h3>
-                    </div>
-                </div>`;
-        
-        // Replace project cards in HTML
-        const regex = /<div class="project-cards">[\s\S]*?<\/div>/;
-        const replacement = `<div class="project-cards">${projectCards}
-            </div>`;
-        
-        html = html.replace(regex, replacement);
-        
-        // Add last updated timestamp (Sri Lankan Timezone)
-        const now = new Date().toLocaleString('en-US', {
-        year: 'numeric',
-        month: 'long',
-        day: 'numeric',
-        hour: '2-digit',
-        minute: '2-digit',
-        timeZone: 'Asia/Colombo',
-        timeZoneName: 'short'
-        });
-
-        
-        // Look for existing metadata or add before footer
-        const metadataHtml = `    <div class="portfolio-metadata">Last updated: <span class="last-updated">${now}</span></div>`;
-        
-        if (html.includes('portfolio-metadata')) {
-          html = html.replace(/<div class="portfolio-metadata">.*?<\/div>/, metadataHtml);
-        } else {
-          html = html.replace(/(<footer)/, `${metadataHtml}\n\n    $1`);
         }
-        
-        // Write updated HTML
-        fs.writeFileSync('index.html', html);
-        console.log('Portfolio updated successfully!');
+
+        (async () => {
+          const youTubeVideos = await fetchYouTubeVideos();
+
+          const repos = GITHUB_REPOS
+            .filter(repo => !repo.fork && !repo.private && repo.description && repo.description.length > 10 &&
+                            !repo.name.includes('.github.io') &&
+                            !repo.name.toLowerCase().includes('config') &&
+                            !repo.name.toLowerCase().includes('readme'))
+            .sort((a, b) => new Date(b.updated_at) - new Date(a.updated_at))
+            .slice(0, 5);
+
+          console.log(`Found ${repos.length} repositories to display:`);
+
+          let projectCards = '';
+          for (const repo of repos) {
+            const name = formatRepoName(repo.name);
+            const description = repo.description;
+            const date = new Date(repo.updated_at).toLocaleDateString('en-US', {
+              year: 'numeric',
+              month: 'short',
+              day: 'numeric'
+            });
+
+            console.log(`- ${repo.name}: ${repo.stargazers_count} stars`);
+
+            // Match video by title containing repo name
+            const matched = youTubeVideos.find(video =>
+              video.snippet?.title?.toLowerCase().includes(repo.name.toLowerCase())
+            );
+
+            let videoEmbed = '';
+            if (matched && matched.id.videoId) {
+              videoEmbed = `
+                <iframe width="100%" height="200" 
+                  src="https://www.youtube.com/embed/${matched.id.videoId}" 
+                  frameborder="0" 
+                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" 
+                  allowfullscreen 
+                  style="border-radius: 8px; margin: 10px 0;">
+                </iframe>`;
+            } else {
+              const videoFileName = repo.name.toLowerCase() + '.mp4';
+              videoEmbed = `
+                <video autoplay muted loop style="width: 100%; max-height: 200px; border-radius: 8px; margin: 10px 0;">
+                  <source src="videos/${videoFileName}" type="video/mp4">
+                </video>`;
+            }
+
+            projectCards += `
+              <div class="project-card">
+                <div class="project-content">
+                  <h3><a href="${repo.html_url}" target="_blank" style="color: #ffd700; text-decoration: none;">${name}</a></h3>
+                  <p>${description}</p>
+                  <div class="project-video">${videoEmbed}</div>
+                  <div class="project-stats">
+                    <span>⭐ ${repo.stargazers_count}</span>
+                    <span>📅 ${date}</span>
+                    ${repo.language ? `<span>💻 ${repo.language}</span>` : ''}
+                  </div>
+                </div>
+              </div>`;
+          }
+
+          projectCards += `
+              <div class="project-card">
+                <div class="project-content" style="display: flex; justify-content: center; align-items: center; height: 180px;">
+                  <h3><a href="https://github.com/harishkavindauoj?tab=repositories" target="_blank" style="font-size: 4rem; color: #ffd700; text-decoration: none;">See More..</a></h3>
+                </div>
+              </div>`;
+
+          const regex = /<div class="project-cards">[\s\S]*?<\/div>/;
+          const replacement = `<div class="project-cards">${projectCards}</div>`;
+          html = html.replace(regex, replacement);
+
+          const now = new Date().toLocaleString('en-US', {
+            year: 'numeric',
+            month: 'long',
+            day: 'numeric',
+            hour: '2-digit',
+            minute: '2-digit',
+            timeZone: 'Asia/Colombo',
+            timeZoneName: 'short'
+          });
+
+          const metadataHtml = `<div class="portfolio-metadata">Last updated: <span class="last-updated">${now}</span></div>`;
+          if (html.includes('portfolio-metadata')) {
+            html = html.replace(/<div class="portfolio-metadata">.*?<\/div>/, metadataHtml);
+          } else {
+            html = html.replace(/(<footer)/, `${metadataHtml}\n\n    $1`);
+          }
+
+          fs.writeFileSync('index.html', html);
+          console.log('Portfolio updated successfully!');
+        })().catch(err => {
+          console.error('Error:', err.message);
+          process.exit(1);
+        });
         EOF
-        
+
         node update.js
         
-        # Clean up temporary files
         rm repos.json update.js
-    
+
     - name: Check for changes
       id: check-changes
       run: |
@@ -152,7 +178,7 @@ jobs:
         else
           echo "changed=true" >> $GITHUB_OUTPUT
         fi
-    
+
     - name: Commit changes
       if: steps.check-changes.outputs.changed == 'true'
       run: |
