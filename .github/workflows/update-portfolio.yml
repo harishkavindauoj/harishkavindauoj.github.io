@@ -146,82 +146,84 @@ jobs:
         function insertNewProjects(newProjectCards) {
           console.log('🔧 Inserting new projects...');
           
-          // Find the insertion point - right before the "See More.." card
-          // This pattern matches the actual structure in your HTML
-          const seeMorePattern = /<div class="project-card">\s*<div class="project-content" style="display: flex; justify-content: center; align-items: center; height: 180px;">\s*<h3><a href="https:\/\/github\.com\/harishkavindauoj\?tab=repositories" target="_blank" style="font-size: 4rem; color: #ffd700; text-decoration: none;">See More\.\.<\/a><\/h3>/;
-          
-          if (!seeMorePattern.test(html)) {
-            console.error('❌ Could not find "See More.." card insertion point');
-            console.log('🔍 Searching for alternative patterns...');
+          // Multiple strategies to find insertion point
+          const patterns = [
+            // Original pattern - exact match
+            /<div class="project-card">\s*<div class="project-content" style="display: flex; justify-content: center; align-items: center; height: 180px;">\s*<h3><a href="https:\/\/github\.com\/harishkavindauoj\?tab=repositories" target="_blank" style="font-size: 4rem; color: #ffd700; text-decoration: none;">See More\.\.<\/a><\/h3>/,
             
-            // Try a simpler pattern
-            const simpleSeeMorePattern = /See More\.\./;
-            if (simpleSeeMorePattern.test(html)) {
-              console.log('✅ Found "See More.." text, using broader insertion method');
+            // More flexible pattern
+            /<div class="project-card">\s*<div class="project-content"[^>]*>\s*<h3><a href="https:\/\/github\.com\/harishkavindauoj\?tab=repositories"[^>]*>See More\.\.<\/a><\/h3>/,
+            
+            // Even more flexible - just look for the See More card structure
+            /<div class="project-card">[^]*?See More\.\.[^]*?<\/div>\s*(?=\s*<\/div>)/,
+            
+            // Last resort - find any "See More.." text and work backwards
+            /(<div class="project-card"[^]*?)See More\.\./
+          ];
+          
+          for (let i = 0; i < patterns.length; i++) {
+            const pattern = patterns[i];
+            console.log(`🔍 Trying insertion pattern ${i + 1}...`);
+            
+            if (pattern.test(html)) {
+              console.log(`✅ Found insertion point with pattern ${i + 1}`);
               
-              // Find the broader pattern and insert before it
-              const broadPattern = /<div class="project-card">[^]*?See More\.\.[^]*?<\/div>\s*<\/div>/;
-              if (broadPattern.test(html)) {
-                html = html.replace(broadPattern, newProjectCards + '        function insertNewProjects(newProjectCards) {
-          console.log('🔧 Inserting new projects...');
-          
-          // Find the insertion point - right before the "See More.." card
-          const seeMorePattern = /<div class="project-card">\s*<div class="project-content"[^>]*style="[^"]*display:\s*flex[^"]*"[^>]*>\s*<h3><a href="https:\/\/github\.com\/harishkavindauoj\?tab=repositories"[^>]*>See More\.\.<\/a><\/h3>/;
-          
-          if (!seeMorePattern.test(html)) {
-            console.error('❌ Could not find "See More.." card insertion point');
-            return false;
-          }
-          
-          // Insert new cards before the "See More.." card
-          html = html.replace(seeMorePattern, newProjectCards + '$&');
-          
-          console.log('✅ New projects inserted successfully');
-          return true;
-        }');
-                console.log('✅ New projects inserted successfully (broad method)');
-                return true;
+              if (i === patterns.length - 1) {
+                // Special handling for last resort pattern
+                html = html.replace(pattern, newProjectCards + '$1See More..');
+              } else {
+                // Standard replacement - insert before the matched pattern
+                html = html.replace(pattern, newProjectCards + '$&');
               }
+              
+              console.log('✅ New projects inserted successfully');
+              return true;
             }
-            
-            console.error('❌ Could not find any suitable insertion point');
-            console.log('🔍 HTML structure around project cards:');
-            
-            // Debug: Show the structure around project cards
-            const projectSectionMatch = html.match(/<div class="project-cards">([\s\S]*?)<\/div>/);
-            if (projectSectionMatch) {
-              const cardsContent = projectSectionMatch[1];
-              const lines = cardsContent.split('\n');
-              console.log('Last 10 lines of project cards:');
-              lines.slice(-10).forEach((line, i) => {
-                console.log(`${lines.length - 10 + i}: ${line}`);
-              });
-            }
-            
-            return false;
           }
           
-          // Insert new cards before the "See More.." card
-          html = html.replace(seeMorePattern, newProjectCards + '        function insertNewProjects(newProjectCards) {
-          console.log('🔧 Inserting new projects...');
+          // If all patterns fail, try to find the project-cards container and append before closing
+          console.log('🔍 All patterns failed, trying container-based insertion...');
           
-          // Find the insertion point - right before the "See More.." card
-          const seeMorePattern = /<div class="project-card">\s*<div class="project-content"[^>]*style="[^"]*display:\s*flex[^"]*"[^>]*>\s*<h3><a href="https:\/\/github\.com\/harishkavindauoj\?tab=repositories"[^>]*>See More\.\.<\/a><\/h3>/;
+          const containerPattern = /(<div class="project-cards">)([\s\S]*?)(<\/div>)/;
+          const containerMatch = html.match(containerPattern);
           
-          if (!seeMorePattern.test(html)) {
-            console.error('❌ Could not find "See More.." card insertion point');
-            return false;
+          if (containerMatch) {
+            const [fullMatch, opening, content, closing] = containerMatch;
+            
+            // Check if there's already a "See More" card
+            if (content.includes('See More..')) {
+              // Insert before the last project card (which should be "See More")
+              const lastCardPattern = /(\s*<div class="project-card">[^]*?See More\.\.[^]*?<\/div>)(\s*<\/div>)$/;
+              const newContent = content.replace(lastCardPattern, newProjectCards + '$1$2');
+              html = html.replace(containerPattern, opening + newContent + closing);
+              console.log('✅ Inserted using container-based method');
+              return true;
+            } else {
+              // No "See More" card, just append
+              html = html.replace(containerPattern, opening + content + newProjectCards + closing);
+              console.log('✅ Appended using container-based method');
+              return true;
+            }
           }
           
-          // Insert new cards before the "See More.." card
-          html = html.replace(seeMorePattern, newProjectCards + '$&');
+          console.error('❌ Could not find any suitable insertion point');
+          console.log('🔍 Debugging HTML structure...');
           
-          console.log('✅ New projects inserted successfully');
-          return true;
-        }');
+          // Debug output
+          const projectSectionMatch = html.match(/<div class="project-cards">([\s\S]*?)<\/div>/);
+          if (projectSectionMatch) {
+            console.log('📄 Found project-cards section');
+            const lines = projectSectionMatch[1].split('\n');
+            console.log(`📊 Section has ${lines.length} lines`);
+            console.log('🔍 Last 5 lines:');
+            lines.slice(-5).forEach((line, i) => {
+              console.log(`${lines.length - 5 + i}: ${line.trim()}`);
+            });
+          } else {
+            console.log('❌ No project-cards section found');
+          }
           
-          console.log('✅ New projects inserted successfully');
-          return true;
+          return false;
         }
 
         (async () => {
@@ -304,7 +306,7 @@ jobs:
               }
 
               // Create the project card with proper indentation to match existing structure
-              newProjectCards += `<div class="project-card">
+              newProjectCards += `        <div class="project-card">
           <div class="project-content">
             <h3><a href="${repo.html_url}" target="_blank" style="color: #ffd700; text-decoration: none;">${name}</a></h3>
             <p>${description}</p>
@@ -316,13 +318,13 @@ jobs:
             </div>
           </div>
         </div>
-        `;
+`;
             }
 
             // Insert new projects
             if (!insertNewProjects(newProjectCards)) {
               console.error('❌ Failed to insert new projects into HTML');
-              return;
+              console.log('⚠️  Continuing without adding new projects...');
             }
 
             // Update the metadata timestamp
@@ -344,7 +346,7 @@ jobs:
             }
 
             fs.writeFileSync('index.html', html);
-            console.log(`\n🎉 Portfolio updated successfully! Added ${newRepos.length} new project(s).`);
+            console.log(`\n🎉 Portfolio updated successfully! Processed ${newRepos.length} project(s).`);
             
           } catch (error) {
             console.error('💥 Error updating portfolio:', error.message);
