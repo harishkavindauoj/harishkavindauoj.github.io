@@ -140,62 +140,32 @@ jobs:
           return existingRepos;
         }
 
-        function cleanUpMalformedHTML() {
-          console.log('Cleaning up potentially malformed HTML...');
-          
-          // Remove any orphaned closing </div> tags that might be floating around
-          html = html.replace(/^\s*<\/div>\s*$/gm, '');
-          
-          // Fix any broken project cards (incomplete structures)
-          const brokenCardPattern = /<div class="project-card">\s*<div class="project-content">\s*<h3>.*?<\/h3>\s*<p>.*?<\/p>\s*<div class="project-video">.*?<\/div>\s*(?!<div class="project-stats">)/gs;
-          html = html.replace(brokenCardPattern, (match) => {
-            if (!match.includes('</div>\n        </div>')) {
-              return match + '\n            <div class="project-stats">\n              <span>⭐ 0</span>\n              <span>📅 Unknown</span>\n            </div>\n          </div>\n        </div>';
-            }
-            return match;
-          });
-          
-          // Ensure project-cards div is properly closed
-          const projectCardsMatch = html.match(/<div class="project-cards">([\s\S]*?)(<\/div>\s*<\/section>)/);
-          if (projectCardsMatch) {
-            const [fullMatch, content, ending] = projectCardsMatch;
-            // Count opening and closing project-card divs
-            const openingCards = (content.match(/<div class="project-card">/g) || []).length;
-            const closingCards = (content.match(/<\/div>\s*<\/div>/g) || []).length;
-            
-            if (openingCards > closingCards) {
-              console.log('Found ' + (openingCards - closingCards) + ' unclosed project cards, fixing...');
-              const missingClosings = '\n        </div>'.repeat(openingCards - closingCards);
-              html = html.replace(projectCardsMatch[0], 
-                '<div class="project-cards">' + content + missingClosings + '\n            </div>' + ending);
-            }
-          }
-          
-          console.log('HTML cleanup completed');
-        }
-
         function insertNewProjects(newProjectCards) {
-          console.log('Inserting ' + newProjectCards.split('<div class="project-card">').length - 1 + ' new projects...');
+          console.log('Inserting new projects...');
           
-          // Clean up any malformed HTML first
-          cleanUpMalformedHTML();
+          // Try to find the "See More" card pattern
+          const seeMorePattern = /<div class="project-card">[^]*?See More\.\.[^]*?<\/div>/;
           
-          // Find the project-cards container
-          const projectCardsPattern = /(<div class="project-cards">)([\s\S]*?)(\n\s*<\/div>\s*<\/section>)/;
-          const match = html.match(projectCardsPattern);
-          
-          if (match) {
-            const [fullMatch, opening, existingContent, closing] = match;
-            
-            // Insert new projects at the beginning (after opening tag)
-            const updatedContent = opening + '\n' + newProjectCards + existingContent + closing;
-            html = html.replace(fullMatch, updatedContent);
-            
+          if (seeMorePattern.test(html)) {
+            console.log('Found See More card, inserting before it');
+            html = html.replace(seeMorePattern, newProjectCards + '$&');
             console.log('New projects inserted successfully');
             return true;
           }
           
-          console.error('Could not find project-cards container');
+          // Fallback: try to find project-cards container
+          const containerPattern = /(<div class="project-cards">)([\s\S]*?)(<\/div>)/;
+          const containerMatch = html.match(containerPattern);
+          
+          if (containerMatch) {
+            console.log('Using container-based insertion');
+            const [fullMatch, opening, content, closing] = containerMatch;
+            html = html.replace(containerPattern, opening + content + newProjectCards + closing);
+            console.log('New projects appended successfully');
+            return true;
+          }
+          
+          console.error('Could not find suitable insertion point');
           return false;
         }
 
@@ -204,53 +174,29 @@ jobs:
             const driveVideos = await fetchDriveVideos();
             const existingProjects = getExistingProjects();
 
-            // Filter repositories more strictly
-            const validRepos = GITHUB_REPOS.filter(repo => {
-              const repoName = repo.name.toLowerCase();
-              return !repo.fork && 
-                     !repo.private && 
-                     repo.description && 
-                     repo.description.trim().length > 10 &&
-                     !repo.name.includes('.github.io') &&
-                     !repoName.includes('config') &&
-                     !repoName.includes('readme') &&
-                     !repoName.includes('dotfiles') &&
-                     repoName !== 'harishkavindauoj';
-            });
-
-            const newRepos = validRepos
-              .filter(repo => !existingProjects.has(repo.name))
+            const newRepos = GITHUB_REPOS
+              .filter(repo => {
+                const repoName = repo.name.toLowerCase();
+                return !repo.fork && 
+                       !repo.private && 
+                       repo.description && 
+                       repo.description.length > 10 &&
+                       !repo.name.includes('.github.io') &&
+                       !repoName.includes('config') &&
+                       !repoName.includes('readme') &&
+                       repoName !== 'harishkavindauoj' &&
+                       !existingProjects.has(repo.name);
+              })
               .sort((a, b) => new Date(b.updated_at) - new Date(a.updated_at))
-              .slice(0, 5); // Limit to 5 new projects at a time
+              .slice(0, 3);
 
             console.log('Repository analysis:');
             console.log('  - Total repos fetched: ' + GITHUB_REPOS.length);
-            console.log('  - Valid repos: ' + validRepos.length);
             console.log('  - Already in portfolio: ' + existingProjects.size);
             console.log('  - New repos to add: ' + newRepos.length);
 
             if (newRepos.length === 0) {
               console.log('No new projects to add. Portfolio is up to date!');
-              
-              // Still update the timestamp
-              const now = new Date().toLocaleString('en-US', {
-                year: 'numeric',
-                month: 'long',
-                day: 'numeric',
-                hour: '2-digit',
-                minute: '2-digit',
-                timeZone: 'Asia/Colombo',
-                timeZoneName: 'short'
-              });
-
-              const metadataHtml = '<div class="portfolio-metadata">Last updated: <span class="last-updated">' + now + '</span></div>';
-              if (html.includes('portfolio-metadata')) {
-                html = html.replace(/<div class="portfolio-metadata">.*?<\/div>/, metadataHtml);
-              } else {
-                html = html.replace(/(<footer)/, metadataHtml + '\n\n    $1');
-              }
-
-              fs.writeFileSync('index.html', html);
               return;
             }
 
@@ -259,7 +205,7 @@ jobs:
             let newProjectCards = '';
             for (const repo of newRepos) {
               const name = formatRepoName(repo.name);
-              const description = repo.description.trim();
+              const description = repo.description;
               const date = new Date(repo.updated_at).toLocaleDateString('en-US', {
                 year: 'numeric',
                 month: 'short',
@@ -275,34 +221,34 @@ jobs:
                 const embedUrl = getVideoEmbedUrl(matchedVideo.id);
                 console.log('Adding Google Drive embed for "' + repo.name + '"');
                 
-                videoEmbed = '\n              <div class="video-container">\n' +
-                           '                <iframe width="100%" height="200" \n' +
-                           '                  src="' + embedUrl + '" \n' +
-                           '                  frameborder="0" \n' +
-                           '                  allow="autoplay; encrypted-media" \n' +
-                           '                  allowfullscreen \n' +
-                           '                  style="border-radius: 8px; margin: 10px 0;">\n' +
-                           '                </iframe>\n' +
-                           '                <div class="video-info" style="font-size: 12px; color: #888; margin-top: 5px;">\n' +
-                           '                  📹 ' + matchedVideo.name + '\n' +
-                           '                </div>\n' +
-                           '              </div>';
+                videoEmbed = '\n          <div class="video-container">\n' +
+                           '            <iframe width="100%" height="200" \n' +
+                           '              src="' + embedUrl + '" \n' +
+                           '              frameborder="0" \n' +
+                           '              allow="autoplay; encrypted-media" \n' +
+                           '              allowfullscreen \n' +
+                           '              style="border-radius: 8px; margin: 10px 0;">\n' +
+                           '            </iframe>\n' +
+                           '            <div class="video-info" style="font-size: 12px; color: #888; margin-top: 5px;">\n' +
+                           '              📹 ' + matchedVideo.name + '\n' +
+                           '            </div>\n' +
+                           '          </div>';
               } else {
                 console.log('No video found for "' + repo.name + '", showing placeholder');
-                videoEmbed = '\n              <div class="video-placeholder" style="width: 100%; height: 200px; background: linear-gradient(135deg, #1a1a1a, #2a2a2a); border-radius: 8px; margin: 10px 0; display: flex; align-items: center; justify-content: center; color: #666;">\n' +
-                           '                <div style="text-align: center;">\n' +
-                           '                  <div style="font-size: 48px; margin-bottom: 10px;">🎬</div>\n' +
-                           '                  <div>Demo video coming soon</div>\n' +
-                           '                  <div style="font-size: 10px; margin-top: 5px;">Looking for: ' + repo.name + '</div>\n' +
-                           '                </div>\n' +
-                           '              </div>';
+                videoEmbed = '\n          <div class="video-placeholder" style="width: 100%; height: 200px; background: linear-gradient(135deg, #1a1a1a, #2a2a2a); border-radius: 8px; margin: 10px 0; display: flex; align-items: center; justify-content: center; color: #666;">\n' +
+                           '            <div style="text-align: center;">\n' +
+                           '              <div style="font-size: 48px; margin-bottom: 10px;">🎬</div>\n' +
+                           '              <div>Demo video coming soon</div>\n' +
+                           '              <div style="font-size: 10px; margin-top: 5px;">Looking for: ' + repo.name + '</div>\n' +
+                           '            </div>\n' +
+                           '          </div>';
               }
 
               newProjectCards += '        <div class="project-card">\n' +
                                 '          <div class="project-content">\n' +
                                 '            <h3><a href="' + repo.html_url + '" target="_blank" style="color: #ffd700; text-decoration: none;">' + name + '</a></h3>\n' +
                                 '            <p>' + description + '</p>\n' +
-                                '            <div class="project-video">' + videoEmbed + '\n            </div>\n' +
+                                '            <div class="project-video">' + videoEmbed + '</div>\n' +
                                 '            <div class="project-stats">\n' +
                                 '              <span>⭐ ' + repo.stargazers_count + '</span>\n' +
                                 '              <span>📅 ' + date + '</span>\n' +
