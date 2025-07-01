@@ -147,6 +147,25 @@ jobs:
           console.log('🔧 Inserting new projects...');
           
           // Find the insertion point - right before the "See More.." card
+          // This pattern matches the actual structure in your HTML
+          const seeMorePattern = /<div class="project-card">\s*<div class="project-content" style="display: flex; justify-content: center; align-items: center; height: 180px;">\s*<h3><a href="https:\/\/github\.com\/harishkavindauoj\?tab=repositories" target="_blank" style="font-size: 4rem; color: #ffd700; text-decoration: none;">See More\.\.<\/a><\/h3>/;
+          
+          if (!seeMorePattern.test(html)) {
+            console.error('❌ Could not find "See More.." card insertion point');
+            console.log('🔍 Searching for alternative patterns...');
+            
+            // Try a simpler pattern
+            const simpleSeeMorePattern = /See More\.\./;
+            if (simpleSeeMorePattern.test(html)) {
+              console.log('✅ Found "See More.." text, using broader insertion method');
+              
+              // Find the broader pattern and insert before it
+              const broadPattern = /<div class="project-card">[^]*?See More\.\.[^]*?<\/div>\s*<\/div>/;
+              if (broadPattern.test(html)) {
+                html = html.replace(broadPattern, newProjectCards + '        function insertNewProjects(newProjectCards) {
+          console.log('🔧 Inserting new projects...');
+          
+          // Find the insertion point - right before the "See More.." card
           const seeMorePattern = /<div class="project-card">\s*<div class="project-content"[^>]*style="[^"]*display:\s*flex[^"]*"[^>]*>\s*<h3><a href="https:\/\/github\.com\/harishkavindauoj\?tab=repositories"[^>]*>See More\.\.<\/a><\/h3>/;
           
           if (!seeMorePattern.test(html)) {
@@ -156,6 +175,50 @@ jobs:
           
           // Insert new cards before the "See More.." card
           html = html.replace(seeMorePattern, newProjectCards + '$&');
+          
+          console.log('✅ New projects inserted successfully');
+          return true;
+        }');
+                console.log('✅ New projects inserted successfully (broad method)');
+                return true;
+              }
+            }
+            
+            console.error('❌ Could not find any suitable insertion point');
+            console.log('🔍 HTML structure around project cards:');
+            
+            // Debug: Show the structure around project cards
+            const projectSectionMatch = html.match(/<div class="project-cards">([\s\S]*?)<\/div>/);
+            if (projectSectionMatch) {
+              const cardsContent = projectSectionMatch[1];
+              const lines = cardsContent.split('\n');
+              console.log('Last 10 lines of project cards:');
+              lines.slice(-10).forEach((line, i) => {
+                console.log(`${lines.length - 10 + i}: ${line}`);
+              });
+            }
+            
+            return false;
+          }
+          
+          // Insert new cards before the "See More.." card
+          html = html.replace(seeMorePattern, newProjectCards + '        function insertNewProjects(newProjectCards) {
+          console.log('🔧 Inserting new projects...');
+          
+          // Find the insertion point - right before the "See More.." card
+          const seeMorePattern = /<div class="project-card">\s*<div class="project-content"[^>]*style="[^"]*display:\s*flex[^"]*"[^>]*>\s*<h3><a href="https:\/\/github\.com\/harishkavindauoj\?tab=repositories"[^>]*>See More\.\.<\/a><\/h3>/;
+          
+          if (!seeMorePattern.test(html)) {
+            console.error('❌ Could not find "See More.." card insertion point');
+            return false;
+          }
+          
+          // Insert new cards before the "See More.." card
+          html = html.replace(seeMorePattern, newProjectCards + '$&');
+          
+          console.log('✅ New projects inserted successfully');
+          return true;
+        }');
           
           console.log('✅ New projects inserted successfully');
           return true;
