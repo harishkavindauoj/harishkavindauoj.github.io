@@ -143,38 +143,34 @@ jobs:
         function insertNewProjects(newProjectCards) {
           console.log('Inserting new projects...');
         
-          const START_MARK = '<!-- AUTO-GENERATED-START -->';
-          const END_MARK = '<!-- AUTO-GENERATED-END -->';
+          const autoStart = '<!-- AUTO-GENERATED-START -->';
+          const autoEnd = '<!-- AUTO-GENERATED-END -->';
         
-          const autoBlock = `${START_MARK}\n${newProjectCards}\n${END_MARK}`;
+          const fullBlock = `${autoStart}\n${newProjectCards}\n${autoEnd}`;
         
-          // If already present, replace it
-          if (html.includes(START_MARK) && html.includes(END_MARK)) {
-            console.log('Found existing auto-generated block, replacing it');
-            html = html.replace(
-              new RegExp(`${START_MARK}[\\s\\S]*?${END_MARK}`, 'g'),
-              autoBlock
-            );
+          const autoPattern = new RegExp(`${autoStart}[\\s\\S]*?${autoEnd}`, 'g');
+        
+          if (autoPattern.test(html)) {
+            console.log('Auto-generated block found. Replacing existing block...');
+            html = html.replace(autoPattern, fullBlock);
             return true;
           }
         
-          // Otherwise, find the insertion point
-          const containerPattern = /(<div class="project-cards">)([\s\S]*?)(<\/div>)/;
-          const containerMatch = html.match(containerPattern);
+          // Fallback: insert right before </div> of .project-cards
+          const containerEndPattern = /(<div class="project-cards">[\s\S]*?)(<\/div>)/;
+        
+          const containerMatch = html.match(containerEndPattern);
         
           if (containerMatch) {
-            console.log('Appending new block inside .project-cards');
-            const [fullMatch, open, content, close] = containerMatch;
-            html = html.replace(
-              containerPattern,
-              `${open}\n${content.trim()}\n${autoBlock}\n${close}`
-            );
+            console.log('No auto block found. Inserting at end of .project-cards...');
+            html = html.replace(containerEndPattern, `$1\n${fullBlock}\n$2`);
             return true;
           }
         
-          console.error('Could not find insertion point for auto-generated content');
+          console.error('Failed to locate insertion point.');
           return false;
         }
+
         
         async function main() {
           try {
@@ -328,4 +324,3 @@ jobs:
         git add index.html
         git commit -m "🤖 Auto-update portfolio with latest projects"
         git push
-
