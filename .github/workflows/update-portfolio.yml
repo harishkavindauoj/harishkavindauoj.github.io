@@ -322,8 +322,10 @@ jobs:
     - name: Commit changes
       if: steps.check-changes.outputs.changed == 'true'
       run: |
+        git config --global --add safe.directory "$(pwd)"
         git config --local user.email "actions@github.com"
         git config --local user.name "GitHub Actions"
         git add index.html
         git commit -m "🤖 Auto-update portfolio with latest projects"
-        git pushF
+        git push
+
