@@ -191,7 +191,7 @@ jobs:
                        !existingProjects.has(repo.name);
               })
               .sort((a, b) => new Date(b.updated_at) - new Date(a.updated_at))
-              .slice(0, 3);
+              .slice(0, 5);
         
             console.log('Repository analysis:');
             console.log('  - Total repos fetched: ' + GITHUB_REPOS.length);
@@ -260,6 +260,12 @@ jobs:
                                 '          </div>\n' +
                                 '        </div>\n';
             }
+        
+            newProjectCards += '        <div class="project-card">\n' +
+                  '          <div class="project-content" style="display: flex; justify-content: center; align-items: center; height: 180px;">\n' +
+                  '            <h3><a href="https://github.com/harishkavindauoj?tab=repositories" target="_blank" style="font-size: 4rem; color: #ffd700; text-decoration: none;">See More..</a></h3>\n' +
+                  '          </div>\n' +
+                  '        </div>\n';
         
             if (!insertNewProjects(newProjectCards)) {
               console.error('Failed to insert new projects into HTML');
