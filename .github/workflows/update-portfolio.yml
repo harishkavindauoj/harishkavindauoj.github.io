@@ -195,19 +195,35 @@ jobs:
 
         function getExistingProjects() {
           // Extract existing project URLs from the HTML to identify already added projects
-          const projectMatches = html.match(/<a href="https:\/\/github\.com\/harishkavindauoj\/([^"]+)"/g);
-          if (!projectMatches) return new Set();
-          
           const existingRepos = new Set();
-          projectMatches.forEach(match => {
-            const repoMatch = match.match(/\/([^"]+)"/);
-            if (repoMatch) {
-              existingRepos.add(repoMatch[1]);
+          
+          // Multiple patterns to catch different URL formats
+          const patterns = [
+            /<a href="https:\/\/github\.com\/harishkavindauoj\/([^"/?#]+)/g,
+            /github\.com\/harishkavindauoj\/([^"/?#\s]+)/g,
+            /href="https:\/\/github\.com\/harishkavindauoj\/([^"/?#]+)/g
+          ];
+          
+          patterns.forEach(pattern => {
+            let match;
+            while ((match = pattern.exec(html)) !== null) {
+              if (match[1] && match[1] !== 'harishkavindauoj' && !match[1].includes('.github.io')) {
+                existingRepos.add(match[1]);
+              }
             }
           });
           
           console.log(`📋 Found ${existingRepos.size} existing projects in portfolio:`);
-          existingRepos.forEach(repo => console.log(`   - ${repo}`));
+          if (existingRepos.size > 0) {
+            existingRepos.forEach(repo => console.log(`   - ${repo}`));
+          } else {
+            console.log('   (No existing projects found - this might be the first run)');
+            
+            // Debug: Show a sample of the HTML to help diagnose
+            const sampleHtml = html.substring(0, 1000);
+            console.log('🔍 HTML sample for debugging:');
+            console.log(sampleHtml.replace(/\s+/g, ' '));
+          }
           
           return existingRepos;
         }
@@ -274,8 +290,44 @@ jobs:
               })
               .sort((a, b) => new Date(b.updated_at) - new Date(a.updated_at));
 
+            console.log(`\n📊 Repository analysis:`);
+            console.log(`   - Total repos fetched: ${GITHUB_REPOS.length}`);
+            console.log(`   - After basic filtering: ${GITHUB_REPOS.filter(repo => {
+              const repoName = repo.name.toLowerCase();
+              return !repo.fork && 
+                     !repo.private && 
+                     repo.description && 
+                     repo.description.length > 10 &&
+                     !repo.name.includes('.github.io') &&
+                     !repoName.includes('config') &&
+                     !repoName.includes('readme') &&
+                     repoName !== 'harishkavindauoj';
+            }).length}`);
+            console.log(`   - Already in portfolio: ${existingProjects.size}`);
+            console.log(`   - New repos to potentially add: ${allRepos.length}`);
+
             if (allRepos.length === 0) {
               console.log('✅ No new projects to add. Portfolio is up to date!');
+              
+              // Show what repos were filtered out and why
+              const filteredRepos = GITHUB_REPOS.filter(repo => {
+                const repoName = repo.name.toLowerCase();
+                return !repo.fork && 
+                       !repo.private && 
+                       repo.description && 
+                       repo.description.length > 10 &&
+                       !repo.name.includes('.github.io') &&
+                       !repoName.includes('config') &&
+                       !repoName.includes('readme') &&
+                       repoName !== 'harishkavindauoj';
+              });
+              
+              console.log('\n🔍 All eligible repos (showing why they were skipped):');
+              filteredRepos.forEach(repo => {
+                const inPortfolio = existingProjects.has(repo.name);
+                console.log(`   - ${repo.name}: ${inPortfolio ? '❌ Already in portfolio' : '✅ Eligible but not selected'}`);
+              });
+              
               return;
             }
 
