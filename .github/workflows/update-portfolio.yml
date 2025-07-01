@@ -124,14 +124,12 @@ jobs:
         }
 
         function getExistingProjects() {
-          // Simple and reliable way to extract existing GitHub repo names
           const existingRepos = new Set();
           const githubUrlRegex = /href="https:\/\/github\.com\/harishkavindauoj\/([^"/?#]+)"/g;
           let match;
           
           while ((match = githubUrlRegex.exec(html)) !== null) {
             const repoName = match[1];
-            // Skip the profile repo and .github.io repos
             if (repoName !== 'harishkavindauoj' && !repoName.includes('.github.io')) {
               existingRepos.add(repoName);
             }
@@ -146,18 +144,10 @@ jobs:
         function insertNewProjects(newProjectCards) {
           console.log('🔧 Inserting new projects...');
           
-          // Multiple strategies to find insertion point
           const patterns = [
-            // Original pattern - exact match
             /<div class="project-card">\s*<div class="project-content" style="display: flex; justify-content: center; align-items: center; height: 180px;">\s*<h3><a href="https:\/\/github\.com\/harishkavindauoj\?tab=repositories" target="_blank" style="font-size: 4rem; color: #ffd700; text-decoration: none;">See More\.\.<\/a><\/h3>/,
-            
-            // More flexible pattern
             /<div class="project-card">\s*<div class="project-content"[^>]*>\s*<h3><a href="https:\/\/github\.com\/harishkavindauoj\?tab=repositories"[^>]*>See More\.\.<\/a><\/h3>/,
-            
-            // Even more flexible - just look for the See More card structure
             /<div class="project-card">[^]*?See More\.\.[^]*?<\/div>\s*(?=\s*<\/div>)/,
-            
-            // Last resort - find any "See More.." text and work backwards
             /(<div class="project-card"[^]*?)See More\.\./
           ];
           
@@ -169,10 +159,8 @@ jobs:
               console.log(`✅ Found insertion point with pattern ${i + 1}`);
               
               if (i === patterns.length - 1) {
-                // Special handling for last resort pattern
                 html = html.replace(pattern, newProjectCards + '$1See More..');
               } else {
-                // Standard replacement - insert before the matched pattern
                 html = html.replace(pattern, newProjectCards + '$&');
               }
               
@@ -181,7 +169,6 @@ jobs:
             }
           }
           
-          // If all patterns fail, try to find the project-cards container and append before closing
           console.log('🔍 All patterns failed, trying container-based insertion...');
           
           const containerPattern = /(<div class="project-cards">)([\s\S]*?)(<\/div>)/;
@@ -190,16 +177,13 @@ jobs:
           if (containerMatch) {
             const [fullMatch, opening, content, closing] = containerMatch;
             
-            // Check if there's already a "See More" card
             if (content.includes('See More..')) {
-              // Insert before the last project card (which should be "See More")
               const lastCardPattern = /(\s*<div class="project-card">[^]*?See More\.\.[^]*?<\/div>)(\s*<\/div>)$/;
               const newContent = content.replace(lastCardPattern, newProjectCards + '$1$2');
               html = html.replace(containerPattern, opening + newContent + closing);
               console.log('✅ Inserted using container-based method');
               return true;
             } else {
-              // No "See More" card, just append
               html = html.replace(containerPattern, opening + content + newProjectCards + closing);
               console.log('✅ Appended using container-based method');
               return true;
@@ -209,7 +193,6 @@ jobs:
           console.error('❌ Could not find any suitable insertion point');
           console.log('🔍 Debugging HTML structure...');
           
-          // Debug output
           const projectSectionMatch = html.match(/<div class="project-cards">([\s\S]*?)<\/div>/);
           if (projectSectionMatch) {
             console.log('📄 Found project-cards section');
@@ -231,7 +214,6 @@ jobs:
             const driveVideos = await fetchDriveVideos();
             const existingProjects = getExistingProjects();
 
-            // Filter repos to exclude already added ones
             const newRepos = GITHUB_REPOS
               .filter(repo => {
                 const repoName = repo.name.toLowerCase();
@@ -243,10 +225,10 @@ jobs:
                        !repoName.includes('config') &&
                        !repoName.includes('readme') &&
                        repoName !== 'harishkavindauoj' &&
-                       !existingProjects.has(repo.name); // Only new repos
+                       !existingProjects.has(repo.name);
               })
               .sort((a, b) => new Date(b.updated_at) - new Date(a.updated_at))
-              .slice(0, 3); // Limit to 3 new projects per run
+              .slice(0, 3);
 
             console.log(`\n📊 Repository analysis:`);
             console.log(`   - Total repos fetched: ${GITHUB_REPOS.length}`);
@@ -305,7 +287,6 @@ jobs:
           </div>`;
               }
 
-              // Create the project card with proper indentation to match existing structure
               newProjectCards += `        <div class="project-card">
           <div class="project-content">
             <h3><a href="${repo.html_url}" target="_blank" style="color: #ffd700; text-decoration: none;">${name}</a></h3>
@@ -321,13 +302,11 @@ jobs:
 `;
             }
 
-            // Insert new projects
             if (!insertNewProjects(newProjectCards)) {
               console.error('❌ Failed to insert new projects into HTML');
               console.log('⚠️  Continuing without adding new projects...');
             }
 
-            // Update the metadata timestamp
             const now = new Date().toLocaleString('en-US', {
               year: 'numeric',
               month: 'long',
