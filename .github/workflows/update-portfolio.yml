@@ -20,18 +20,18 @@ jobs:
       with:
         node-version: '18'
 
-    - name: Update portfolio
+    - name: Fetch GitHub repositories
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        GOOGLE_DRIVE_API_KEY: ${{ secrets.GOOGLE_DRIVE_API_KEY }}
-        GOOGLE_DRIVE_FOLDER_ID: ${{ secrets.GOOGLE_DRIVE_FOLDER_ID }}
       run: |
         curl -s -H "Authorization: token $GITHUB_TOKEN" \
              -H "Accept: application/vnd.github.v3+json" \
              "https://api.github.com/users/harishkavindauoj/repos?sort=updated&per_page=50" \
              > repos.json
-        
-        cat > update.js << 'EOF'
+
+    - name: Create update script
+      run: |
+        cat > update.js << 'SCRIPT_END'
         const fs = require('fs');
         const https = require('https');
 
@@ -47,10 +47,11 @@ jobs:
             return Promise.resolve([]);
           }
 
-          const url = `https://www.googleapis.com/drive/v3/files?key=${API_KEY}&q='${FOLDER_ID}'+in+parents+and+(mimeType+contains+'video'+or+name+contains+'.mp4'+or+name+contains+'.avi'+or+name+contains+'.mov'+or+name+contains+'.mkv')&fields=files(id,name,webViewLink,webContentLink,thumbnailLink,videoMediaMetadata,mimeType)&pageSize=100`;
+          const url = 'https://www.googleapis.com/drive/v3/files?key=' + API_KEY + 
+                     '&q=\'' + FOLDER_ID + '\'+in+parents+and+(mimeType+contains+\'video\'+or+name+contains+\'.mp4\'+or+name+contains+\'.avi\'+or+name+contains+\'.mov\'+or+name+contains+\'.mkv\')&fields=files(id,name,webViewLink,webContentLink,thumbnailLink,videoMediaMetadata,mimeType)&pageSize=100';
           
           return new Promise((resolve, reject) => {
-            console.log('🔍 Fetching Google Drive videos...');
+            console.log('Fetching Google Drive videos...');
             
             https.get(url, res => {
               let data = '';
@@ -60,21 +61,21 @@ jobs:
                   const json = JSON.parse(data);
                   
                   if (json.error) {
-                    console.error('❌ Google Drive API Error:', json.error.message);
+                    console.error('Google Drive API Error:', json.error.message);
                     resolve([]);
                     return;
                   }
                   
                   const videos = json.files || [];
-                  console.log(`✅ Found ${videos.length} videos in Google Drive folder`);
+                  console.log('Found ' + videos.length + ' videos in Google Drive folder');
                   resolve(videos);
                 } catch (err) {
-                  console.error('❌ Error parsing Google Drive response:', err.message);
+                  console.error('Error parsing Google Drive response:', err.message);
                   resolve([]);
                 }
               });
             }).on('error', err => {
-              console.error('❌ Error fetching Google Drive videos:', err.message);
+              console.error('Error fetching Google Drive videos:', err.message);
               resolve([]);
             });
           });
@@ -89,7 +90,7 @@ jobs:
         }
 
         function findMatchingVideo(repoName, videos) {
-          console.log(`🔍 Looking for video matching repo: "${repoName}"`);
+          console.log('Looking for video matching repo: "' + repoName + '"');
           
           const searchTerms = [
             repoName.toLowerCase(),
@@ -110,17 +111,17 @@ jobs:
             });
             
             if (match) {
-              console.log(`🎯 Found matching video for "${repoName}": "${match.name}"`);
+              console.log('Found matching video for "' + repoName + '": "' + match.name + '"');
               return match;
             }
           }
           
-          console.log(`❌ No matching video found for "${repoName}"`);
+          console.log('No matching video found for "' + repoName + '"');
           return null;
         }
 
         function getVideoEmbedUrl(fileId) {
-          return `https://drive.google.com/file/d/${fileId}/preview`;
+          return 'https://drive.google.com/file/d/' + fileId + '/preview';
         }
 
         function getExistingProjects() {
@@ -135,81 +136,40 @@ jobs:
             }
           }
           
-          console.log(`📋 Found ${existingRepos.size} existing projects in portfolio:`);
-          existingRepos.forEach(repo => console.log(`   - ${repo}`));
-          
+          console.log('Found ' + existingRepos.size + ' existing projects in portfolio');
           return existingRepos;
         }
 
         function insertNewProjects(newProjectCards) {
-          console.log('🔧 Inserting new projects...');
+          console.log('Inserting new projects...');
           
-          const patterns = [
-            /<div class="project-card">\s*<div class="project-content" style="display: flex; justify-content: center; align-items: center; height: 180px;">\s*<h3><a href="https:\/\/github\.com\/harishkavindauoj\?tab=repositories" target="_blank" style="font-size: 4rem; color: #ffd700; text-decoration: none;">See More\.\.<\/a><\/h3>/,
-            /<div class="project-card">\s*<div class="project-content"[^>]*>\s*<h3><a href="https:\/\/github\.com\/harishkavindauoj\?tab=repositories"[^>]*>See More\.\.<\/a><\/h3>/,
-            /<div class="project-card">[^]*?See More\.\.[^]*?<\/div>\s*(?=\s*<\/div>)/,
-            /(<div class="project-card"[^]*?)See More\.\./
-          ];
+          // Try to find the "See More" card pattern
+          const seeMorePattern = /<div class="project-card">[^]*?See More\.\.[^]*?<\/div>/;
           
-          for (let i = 0; i < patterns.length; i++) {
-            const pattern = patterns[i];
-            console.log(`🔍 Trying insertion pattern ${i + 1}...`);
-            
-            if (pattern.test(html)) {
-              console.log(`✅ Found insertion point with pattern ${i + 1}`);
-              
-              if (i === patterns.length - 1) {
-                html = html.replace(pattern, newProjectCards + '$1See More..');
-              } else {
-                html = html.replace(pattern, newProjectCards + '$&');
-              }
-              
-              console.log('✅ New projects inserted successfully');
-              return true;
-            }
+          if (seeMorePattern.test(html)) {
+            console.log('Found See More card, inserting before it');
+            html = html.replace(seeMorePattern, newProjectCards + '$&');
+            console.log('New projects inserted successfully');
+            return true;
           }
           
-          console.log('🔍 All patterns failed, trying container-based insertion...');
-          
+          // Fallback: try to find project-cards container
           const containerPattern = /(<div class="project-cards">)([\s\S]*?)(<\/div>)/;
           const containerMatch = html.match(containerPattern);
           
           if (containerMatch) {
+            console.log('Using container-based insertion');
             const [fullMatch, opening, content, closing] = containerMatch;
-            
-            if (content.includes('See More..')) {
-              const lastCardPattern = /(\s*<div class="project-card">[^]*?See More\.\.[^]*?<\/div>)(\s*<\/div>)$/;
-              const newContent = content.replace(lastCardPattern, newProjectCards + '$1$2');
-              html = html.replace(containerPattern, opening + newContent + closing);
-              console.log('✅ Inserted using container-based method');
-              return true;
-            } else {
-              html = html.replace(containerPattern, opening + content + newProjectCards + closing);
-              console.log('✅ Appended using container-based method');
-              return true;
-            }
+            html = html.replace(containerPattern, opening + content + newProjectCards + closing);
+            console.log('New projects appended successfully');
+            return true;
           }
           
-          console.error('❌ Could not find any suitable insertion point');
-          console.log('🔍 Debugging HTML structure...');
-          
-          const projectSectionMatch = html.match(/<div class="project-cards">([\s\S]*?)<\/div>/);
-          if (projectSectionMatch) {
-            console.log('📄 Found project-cards section');
-            const lines = projectSectionMatch[1].split('\n');
-            console.log(`📊 Section has ${lines.length} lines`);
-            console.log('🔍 Last 5 lines:');
-            lines.slice(-5).forEach((line, i) => {
-              console.log(`${lines.length - 5 + i}: ${line.trim()}`);
-            });
-          } else {
-            console.log('❌ No project-cards section found');
-          }
-          
+          console.error('Could not find suitable insertion point');
           return false;
         }
 
-        (async () => {
+        async function main() {
           try {
             const driveVideos = await fetchDriveVideos();
             const existingProjects = getExistingProjects();
@@ -230,18 +190,17 @@ jobs:
               .sort((a, b) => new Date(b.updated_at) - new Date(a.updated_at))
               .slice(0, 3);
 
-            console.log(`\n📊 Repository analysis:`);
-            console.log(`   - Total repos fetched: ${GITHUB_REPOS.length}`);
-            console.log(`   - Already in portfolio: ${existingProjects.size}`);
-            console.log(`   - New repos to add: ${newRepos.length}`);
+            console.log('Repository analysis:');
+            console.log('  - Total repos fetched: ' + GITHUB_REPOS.length);
+            console.log('  - Already in portfolio: ' + existingProjects.size);
+            console.log('  - New repos to add: ' + newRepos.length);
 
             if (newRepos.length === 0) {
-              console.log('✅ No new projects to add. Portfolio is up to date!');
+              console.log('No new projects to add. Portfolio is up to date!');
               return;
             }
 
-            console.log(`\n📊 Adding ${newRepos.length} new repositories:`);
-            newRepos.forEach((repo, i) => console.log(`   ${i+1}. ${repo.name}`));
+            console.log('Adding ' + newRepos.length + ' new repositories');
 
             let newProjectCards = '';
             for (const repo of newRepos) {
@@ -253,60 +212,58 @@ jobs:
                 day: 'numeric'
               });
 
-              console.log(`\n🔄 Processing repo: "${repo.name}"`);
+              console.log('Processing repo: "' + repo.name + '"');
 
               const matchedVideo = findMatchingVideo(repo.name, driveVideos);
 
               let videoEmbed = '';
               if (matchedVideo && matchedVideo.id) {
                 const embedUrl = getVideoEmbedUrl(matchedVideo.id);
-                console.log(`✅ Adding Google Drive embed for "${repo.name}"`);
+                console.log('Adding Google Drive embed for "' + repo.name + '"');
                 
-                videoEmbed = `
-          <div class="video-container">
-            <iframe width="100%" height="200" 
-              src="${embedUrl}" 
-              frameborder="0" 
-              allow="autoplay; encrypted-media" 
-              allowfullscreen 
-              style="border-radius: 8px; margin: 10px 0;">
-            </iframe>
-            <div class="video-info" style="font-size: 12px; color: #888; margin-top: 5px;">
-              📹 ${matchedVideo.name}
-            </div>
-          </div>`;
+                videoEmbed = '\n          <div class="video-container">\n' +
+                           '            <iframe width="100%" height="200" \n' +
+                           '              src="' + embedUrl + '" \n' +
+                           '              frameborder="0" \n' +
+                           '              allow="autoplay; encrypted-media" \n' +
+                           '              allowfullscreen \n' +
+                           '              style="border-radius: 8px; margin: 10px 0;">\n' +
+                           '            </iframe>\n' +
+                           '            <div class="video-info" style="font-size: 12px; color: #888; margin-top: 5px;">\n' +
+                           '              📹 ' + matchedVideo.name + '\n' +
+                           '            </div>\n' +
+                           '          </div>';
               } else {
-                console.log(`❌ No video found for "${repo.name}", showing placeholder`);
-                videoEmbed = `
-          <div class="video-placeholder" style="width: 100%; height: 200px; background: linear-gradient(135deg, #1a1a1a, #2a2a2a); border-radius: 8px; margin: 10px 0; display: flex; align-items: center; justify-content: center; color: #666;">
-            <div style="text-align: center;">
-              <div style="font-size: 48px; margin-bottom: 10px;">🎬</div>
-              <div>Demo video coming soon</div>
-              <div style="font-size: 10px; margin-top: 5px;">Looking for: ${repo.name}</div>
-            </div>
-          </div>`;
+                console.log('No video found for "' + repo.name + '", showing placeholder');
+                videoEmbed = '\n          <div class="video-placeholder" style="width: 100%; height: 200px; background: linear-gradient(135deg, #1a1a1a, #2a2a2a); border-radius: 8px; margin: 10px 0; display: flex; align-items: center; justify-content: center; color: #666;">\n' +
+                           '            <div style="text-align: center;">\n' +
+                           '              <div style="font-size: 48px; margin-bottom: 10px;">🎬</div>\n' +
+                           '              <div>Demo video coming soon</div>\n' +
+                           '              <div style="font-size: 10px; margin-top: 5px;">Looking for: ' + repo.name + '</div>\n' +
+                           '            </div>\n' +
+                           '          </div>';
               }
 
-              newProjectCards += `        <div class="project-card">
-          <div class="project-content">
-            <h3><a href="${repo.html_url}" target="_blank" style="color: #ffd700; text-decoration: none;">${name}</a></h3>
-            <p>${description}</p>
-            <div class="project-video">${videoEmbed}</div>
-            <div class="project-stats">
-              <span>⭐ ${repo.stargazers_count}</span>
-              <span>📅 ${date}</span>
-              ${repo.language ? `<span>💻 ${repo.language}</span>` : ''}
-            </div>
-          </div>
-        </div>
-`;
+              newProjectCards += '        <div class="project-card">\n' +
+                                '          <div class="project-content">\n' +
+                                '            <h3><a href="' + repo.html_url + '" target="_blank" style="color: #ffd700; text-decoration: none;">' + name + '</a></h3>\n' +
+                                '            <p>' + description + '</p>\n' +
+                                '            <div class="project-video">' + videoEmbed + '</div>\n' +
+                                '            <div class="project-stats">\n' +
+                                '              <span>⭐ ' + repo.stargazers_count + '</span>\n' +
+                                '              <span>📅 ' + date + '</span>\n' +
+                                (repo.language ? '              <span>💻 ' + repo.language + '</span>\n' : '') +
+                                '            </div>\n' +
+                                '          </div>\n' +
+                                '        </div>\n';
             }
 
             if (!insertNewProjects(newProjectCards)) {
-              console.error('❌ Failed to insert new projects into HTML');
-              console.log('⚠️  Continuing without adding new projects...');
+              console.error('Failed to insert new projects into HTML');
+              console.log('Continuing without adding new projects...');
             }
 
+            // Update timestamp
             const now = new Date().toLocaleString('en-US', {
               year: 'numeric',
               month: 'long',
@@ -317,26 +274,32 @@ jobs:
               timeZoneName: 'short'
             });
 
-            const metadataHtml = `<div class="portfolio-metadata">Last updated: <span class="last-updated">${now}</span></div>`;
+            const metadataHtml = '<div class="portfolio-metadata">Last updated: <span class="last-updated">' + now + '</span></div>';
             if (html.includes('portfolio-metadata')) {
               html = html.replace(/<div class="portfolio-metadata">.*?<\/div>/, metadataHtml);
             } else {
-              html = html.replace(/(<footer)/, `${metadataHtml}\n\n    $1`);
+              html = html.replace(/(<footer)/, metadataHtml + '\n\n    $1');
             }
 
             fs.writeFileSync('index.html', html);
-            console.log(`\n🎉 Portfolio updated successfully! Processed ${newRepos.length} project(s).`);
+            console.log('Portfolio updated successfully! Processed ' + newRepos.length + ' project(s).');
             
           } catch (error) {
-            console.error('💥 Error updating portfolio:', error.message);
+            console.error('Error updating portfolio:', error.message);
             console.error('Stack trace:', error.stack);
             process.exit(1);
           }
-        })();
-        EOF
+        }
 
+        main();
+        SCRIPT_END
+
+    - name: Run update script
+      env:
+        GOOGLE_DRIVE_API_KEY: ${{ secrets.GOOGLE_DRIVE_API_KEY }}
+        GOOGLE_DRIVE_FOLDER_ID: ${{ secrets.GOOGLE_DRIVE_FOLDER_ID }}
+      run: |
         node update.js
-        
         rm repos.json update.js
 
     - name: Check for changes
