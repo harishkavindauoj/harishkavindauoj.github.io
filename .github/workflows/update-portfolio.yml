@@ -193,26 +193,100 @@ jobs:
           });
         }
 
+        function getExistingProjects() {
+          // Extract existing project URLs from the HTML to identify already added projects
+          const projectMatches = html.match(/<a href="https:\/\/github\.com\/harishkavindauoj\/([^"]+)"/g);
+          if (!projectMatches) return new Set();
+          
+          const existingRepos = new Set();
+          projectMatches.forEach(match => {
+            const repoMatch = match.match(/\/([^"]+)"/);
+            if (repoMatch) {
+              existingRepos.add(repoMatch[1]);
+            }
+          });
+          
+          console.log(`📋 Found ${existingRepos.size} existing projects in portfolio:`);
+          existingRepos.forEach(repo => console.log(`   - ${repo}`));
+          
+          return existingRepos;
+        }
+
+        function insertNewProjects(newProjectCards) {
+          // Find the project-cards container
+          const projectCardsMatch = html.match(/<div class="project-cards">([\s\S]*?)<\/div>/);
+          if (!projectCardsMatch) {
+            console.error('❌ Could not find project-cards container in HTML');
+            return false;
+          }
+          
+          const existingContent = projectCardsMatch[1];
+          
+          // Find the "See More.." card to insert before it
+          const seeMoreMatch = existingContent.match(/(\s*<div class="project-card">[\s\S]*?See More\.\.[\s\S]*?<\/div>)/);
+          
+          if (seeMoreMatch) {
+            // Insert new projects before the "See More.." card
+            const seeMoreCard = seeMoreMatch[1];
+            const contentBeforeSeeMore = existingContent.replace(seeMoreCard, '');
+            const newContent = contentBeforeSeeMore + newProjectCards + seeMoreCard;
+            
+            const newProjectCardsHtml = `<div class="project-cards">${newContent}</div>`;
+            html = html.replace(/<div class="project-cards">[\s\S]*?<\/div>/, newProjectCardsHtml);
+          } else {
+            // If no "See More.." card found, just append new projects and add the "See More.." card
+            const seeMoreCard = `
+                <div class="project-card">
+                  <div class="project-content" style="display: flex; justify-content: center; align-items: center; height: 180px;">
+                    <h3><a href="https://github.com/harishkavindauoj?tab=repositories" target="_blank" style="font-size: 4rem; color: #ffd700; text-decoration: none;">See More..</a></h3>
+                  </div>
+                </div>`;
+            
+            const newContent = existingContent + newProjectCards + seeMoreCard;
+            const newProjectCardsHtml = `<div class="project-cards">${newContent}</div>`;
+            html = html.replace(/<div class="project-cards">[\s\S]*?<\/div>/, newProjectCardsHtml);
+          }
+          
+          return true;
+        }
+
         (async () => {
           try {
             // Test Drive access first
             await testDriveAccess();
             
             const driveVideos = await fetchDriveVideos();
+            const existingProjects = getExistingProjects();
 
-            const repos = GITHUB_REPOS
-              .filter(repo => !repo.fork && !repo.private && repo.description && repo.description.length > 10 &&
-                              !repo.name.includes('.github.io') &&
-                              !repo.name.toLowerCase().includes('config') &&
-                              !repo.name.toLowerCase().includes('readme'))
-              .sort((a, b) => new Date(b.updated_at) - new Date(a.updated_at))
-              .slice(0, 5);
+            // Filter repos to exclude already added ones and special projects
+            const allRepos = GITHUB_REPOS
+              .filter(repo => {
+                const repoName = repo.name.toLowerCase();
+                return !repo.fork && 
+                       !repo.private && 
+                       repo.description && 
+                       repo.description.length > 10 &&
+                       !repo.name.includes('.github.io') &&
+                       !repoName.includes('config') &&
+                       !repoName.includes('readme') &&
+                       repoName !== 'harishkavindauoj' && // Ignore username repo
+                       !existingProjects.has(repo.name); // Only new repos
+              })
+              .sort((a, b) => new Date(b.updated_at) - new Date(a.updated_at));
 
-            console.log(`\n📊 Processing ${repos.length} repositories:`);
-            repos.forEach((repo, i) => console.log(`   ${i+1}. ${repo.name}`));
+            if (allRepos.length === 0) {
+              console.log('✅ No new projects to add. Portfolio is up to date!');
+              return;
+            }
 
-            let projectCards = '';
-            for (const repo of repos) {
+            // Limit to max 3 new projects per run to avoid overwhelming the portfolio
+            const newRepos = allRepos.slice(0, 3);
+
+            console.log(`\n📊 Found ${allRepos.length} new repositories, adding ${newRepos.length}:`);
+            newRepos.forEach((repo, i) => console.log(`   ${i+1}. ${repo.name} (new)`));
+
+            let newProjectCards = '';
+            for (const repo of newRepos) {
               const name = formatRepoName(repo.name);
               const description = repo.description;
               const date = new Date(repo.updated_at).toLocaleDateString('en-US', {
@@ -221,7 +295,7 @@ jobs:
                 day: 'numeric'
               });
 
-              console.log(`\n🔄 Processing repo: "${repo.name}" (${repo.stargazers_count} stars)`);
+              console.log(`\n🔄 Processing new repo: "${repo.name}" (${repo.stargazers_count} stars)`);
 
               const matchedVideo = findMatchingVideo(repo.name, driveVideos);
 
@@ -257,7 +331,7 @@ jobs:
                   </div>`;
               }
 
-              projectCards += `
+              newProjectCards += `
                 <div class="project-card">
                   <div class="project-content">
                     <h3><a href="${repo.html_url}" target="_blank" style="color: #ffd700; text-decoration: none;">${name}</a></h3>
@@ -272,17 +346,13 @@ jobs:
                 </div>`;
             }
 
-            projectCards += `
-                <div class="project-card">
-                  <div class="project-content" style="display: flex; justify-content: center; align-items: center; height: 180px;">
-                    <h3><a href="https://github.com/harishkavindauoj?tab=repositories" target="_blank" style="font-size: 4rem; color: #ffd700; text-decoration: none;">See More..</a></h3>
-                  </div>
-                </div>`;
+            // Insert new projects into existing HTML structure
+            if (newProjectCards && !insertNewProjects(newProjectCards)) {
+              console.error('❌ Failed to insert new projects into HTML');
+              return;
+            }
 
-            const regex = /<div class="project-cards">[\s\S]*?<\/div>/;
-            const replacement = `<div class="project-cards">${projectCards}</div>`;
-            html = html.replace(regex, replacement);
-
+            // Update the metadata timestamp
             const now = new Date().toLocaleString('en-US', {
               year: 'numeric',
               month: 'long',
@@ -301,7 +371,7 @@ jobs:
             }
 
             fs.writeFileSync('index.html', html);
-            console.log('\n🎉 Portfolio updated successfully!');
+            console.log(`\n🎉 Portfolio updated successfully! Added ${newRepos.length} new project(s).`);
             
           } catch (error) {
             console.error('💥 Error updating portfolio:', error.message);
