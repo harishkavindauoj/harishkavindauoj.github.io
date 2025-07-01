@@ -229,40 +229,74 @@ jobs:
         }
 
         function insertNewProjects(newProjectCards) {
-          // Find the project-cards container
-          const projectCardsMatch = html.match(/<div class="project-cards">([\s\S]*?)<\/div>/);
+          console.log('🔧 Fixing corrupted HTML structure...');
+          
+          // Find the project-cards container - use a more robust regex
+          const projectCardsMatch = html.match(/<div class="project-cards">([\s\S]*?)<\/div>\s*<\/div>\s*<\/section>/);
           if (!projectCardsMatch) {
             console.error('❌ Could not find project-cards container in HTML');
             return false;
           }
           
-          const existingContent = projectCardsMatch[1];
+          let existingContent = projectCardsMatch[1];
+          console.log('📝 Original content length:', existingContent.length);
           
-          // Find the "See More.." card to insert before it
-          const seeMoreMatch = existingContent.match(/(\s*<div class="project-card">[\s\S]*?See More\.\.[\s\S]*?<\/div>)/);
+          // Clean up the corrupted structure
+          // Remove duplicate closing tags and malformed content
+          existingContent = existingContent
+            .replace(/\s*<\/div>\s*<\/div>\s*<div class="project-stats">[\s\S]*?<\/div>\s*<\/div>\s*<\/div>/g, '') // Remove orphaned stats
+            .replace(/\s*<\/div>\s*<\/div>\s*<\/div>\s*<\/section>/g, '') // Remove extra closing tags
+            .replace(/\s*<\/div>\s*<\/div>\s*<\/div>$/g, '') // Remove trailing extra divs
+            .trim();
           
-          if (seeMoreMatch) {
-            // Insert new projects before the "See More.." card
-            const seeMoreCard = seeMoreMatch[1];
-            const contentBeforeSeeMore = existingContent.replace(seeMoreCard, '');
-            const newContent = contentBeforeSeeMore + newProjectCards + seeMoreCard;
+          console.log('🧹 After cleanup content length:', existingContent.length);
+          
+          // Extract all existing project cards properly
+          const existingProjectCards = [];
+          const projectCardRegex = /<div class="project-card">\s*<div class="project-content">[\s\S]*?(?=<div class="project-card"|$)/g;
+          let match;
+          
+          while ((match = projectCardRegex.exec(existingContent)) !== null) {
+            const cardContent = match[0];
             
-            const newProjectCardsHtml = `<div class="project-cards">${newContent}</div>`;
-            html = html.replace(/<div class="project-cards">[\s\S]*?<\/div>/, newProjectCardsHtml);
-          } else {
-            // If no "See More.." card found, just append new projects and add the "See More.." card
-            const seeMoreCard = `
-                <div class="project-card">
-                  <div class="project-content" style="display: flex; justify-content: center; align-items: center; height: 180px;">
-                    <h3><a href="https://github.com/harishkavindauoj?tab=repositories" target="_blank" style="font-size: 4rem; color: #ffd700; text-decoration: none;">See More..</a></h3>
-                  </div>
-                </div>`;
-            
-            const newContent = existingContent + newProjectCards + seeMoreCard;
-            const newProjectCardsHtml = `<div class="project-cards">${newContent}</div>`;
-            html = html.replace(/<div class="project-cards">[\s\S]*?<\/div>/, newProjectCardsHtml);
+            // Skip if it's a "See More.." card
+            if (!cardContent.includes('See More..')) {
+              // Ensure the card is properly closed
+              let properCard = cardContent;
+              if (!properCard.includes('</div>\n        </div>')) {
+                properCard = properCard.replace(/(<div class="project-stats">[\s\S]*?<\/div>)\s*$/, '$1\n          </div>\n        </div>');
+              }
+              existingProjectCards.push(properCard);
+            }
           }
           
+          console.log(`🔍 Found ${existingProjectCards.length} existing project cards`);
+          
+          // Create the complete new content
+          const allProjectCards = existingProjectCards.join('\n        ') + '\n        ' + newProjectCards.trim();
+          
+          // Add the "See More.." card at the end
+          const seeMoreCard = `
+        <div class="project-card">
+          <div class="project-content" style="display: flex; justify-content: center; align-items: center; height: 180px;">
+            <h3><a href="https://github.com/harishkavindauoj?tab=repositories" target="_blank" style="font-size: 4rem; color: #ffd700; text-decoration: none;">See More..</a></h3>
+          </div>
+        </div>`;
+          
+          const finalContent = allProjectCards + seeMoreCard;
+          
+          // Replace the entire project-cards section with clean content
+          const newProjectCardsHtml = `<div class="project-cards">${finalContent}</div>`;
+          
+          // Use a more precise replacement that handles the closing tags
+          html = html.replace(
+            /<div class="project-cards">[\s\S]*?<\/div>\s*<\/div>\s*<\/section>/,
+            `${newProjectCardsHtml}
+          </div>
+        </section>`
+          );
+          
+          console.log('✅ HTML structure fixed and new projects inserted');
           return true;
         }
 
