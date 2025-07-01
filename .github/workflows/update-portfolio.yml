@@ -34,19 +34,19 @@ jobs:
         cat > update.js << 'SCRIPT_END'
         const fs = require('fs');
         const https = require('https');
-
+        
         const GITHUB_REPOS = JSON.parse(fs.readFileSync('repos.json', 'utf8'));
         const API_KEY = process.env.GOOGLE_DRIVE_API_KEY;
         const FOLDER_ID = process.env.GOOGLE_DRIVE_FOLDER_ID;
-
+        
         let html = fs.readFileSync('index.html', 'utf8');
-
+        
         function fetchDriveVideos() {
           if (!API_KEY || !FOLDER_ID) {
             console.log('Google Drive API credentials missing, skipping video fetch');
             return Promise.resolve([]);
           }
-
+        
           const url = 'https://www.googleapis.com/drive/v3/files?key=' + API_KEY + 
                      '&q=\'' + FOLDER_ID + '\'+in+parents+and+(mimeType+contains+\'video\'+or+name+contains+\'.mp4\'+or+name+contains+\'.avi\'+or+name+contains+\'.mov\'+or+name+contains+\'.mkv\')&fields=files(id,name,webViewLink,webContentLink,thumbnailLink,videoMediaMetadata,mimeType)&pageSize=100';
           
@@ -80,7 +80,7 @@ jobs:
             });
           });
         }
-
+        
         function formatRepoName(name) {
           return name
             .replace(/[-_]/g, ' ')
@@ -88,7 +88,7 @@ jobs:
             .map(word => word.charAt(0).toUpperCase() + word.slice(1))
             .join(' ');
         }
-
+        
         function findMatchingVideo(repoName, videos) {
           console.log('Looking for video matching repo: "' + repoName + '"');
           
@@ -119,11 +119,11 @@ jobs:
           console.log('No matching video found for "' + repoName + '"');
           return null;
         }
-
+        
         function getVideoEmbedUrl(fileId) {
           return 'https://drive.google.com/file/d/' + fileId + '/preview';
         }
-
+        
         function getExistingProjects() {
           const existingRepos = new Set();
           const githubUrlRegex = /href="https:\/\/github\.com\/harishkavindauoj\/([^"/?#]+)"/g;
@@ -139,41 +139,48 @@ jobs:
           console.log('Found ' + existingRepos.size + ' existing projects in portfolio');
           return existingRepos;
         }
-
+        
         function insertNewProjects(newProjectCards) {
           console.log('Inserting new projects...');
-          
-          // Try to find the "See More" card pattern
-          const seeMorePattern = /<div class="project-card">[^]*?See More\.\.[^]*?<\/div>/;
-          
-          if (seeMorePattern.test(html)) {
-            console.log('Found See More card, inserting before it');
-            html = html.replace(seeMorePattern, newProjectCards + '$&');
-            console.log('New projects inserted successfully');
+        
+          const START_MARK = '<!-- AUTO-GENERATED-START -->';
+          const END_MARK = '<!-- AUTO-GENERATED-END -->';
+        
+          const autoBlock = `${START_MARK}\n${newProjectCards}\n${END_MARK}`;
+        
+          // If already present, replace it
+          if (html.includes(START_MARK) && html.includes(END_MARK)) {
+            console.log('Found existing auto-generated block, replacing it');
+            html = html.replace(
+              new RegExp(`${START_MARK}[\\s\\S]*?${END_MARK}`, 'g'),
+              autoBlock
+            );
             return true;
           }
-          
-          // Fallback: try to find project-cards container
+        
+          // Otherwise, find the insertion point
           const containerPattern = /(<div class="project-cards">)([\s\S]*?)(<\/div>)/;
           const containerMatch = html.match(containerPattern);
-          
+        
           if (containerMatch) {
-            console.log('Using container-based insertion');
-            const [fullMatch, opening, content, closing] = containerMatch;
-            html = html.replace(containerPattern, opening + content + newProjectCards + closing);
-            console.log('New projects appended successfully');
+            console.log('Appending new block inside .project-cards');
+            const [fullMatch, open, content, close] = containerMatch;
+            html = html.replace(
+              containerPattern,
+              `${open}\n${content.trim()}\n${autoBlock}\n${close}`
+            );
             return true;
           }
-          
-          console.error('Could not find suitable insertion point');
+        
+          console.error('Could not find insertion point for auto-generated content');
           return false;
         }
-
+        
         async function main() {
           try {
             const driveVideos = await fetchDriveVideos();
             const existingProjects = getExistingProjects();
-
+        
             const newRepos = GITHUB_REPOS
               .filter(repo => {
                 const repoName = repo.name.toLowerCase();
@@ -189,19 +196,19 @@ jobs:
               })
               .sort((a, b) => new Date(b.updated_at) - new Date(a.updated_at))
               .slice(0, 3);
-
+        
             console.log('Repository analysis:');
             console.log('  - Total repos fetched: ' + GITHUB_REPOS.length);
             console.log('  - Already in portfolio: ' + existingProjects.size);
             console.log('  - New repos to add: ' + newRepos.length);
-
+        
             if (newRepos.length === 0) {
               console.log('No new projects to add. Portfolio is up to date!');
               return;
             }
-
+        
             console.log('Adding ' + newRepos.length + ' new repositories');
-
+        
             let newProjectCards = '';
             for (const repo of newRepos) {
               const name = formatRepoName(repo.name);
@@ -211,11 +218,11 @@ jobs:
                 month: 'short',
                 day: 'numeric'
               });
-
+        
               console.log('Processing repo: "' + repo.name + '"');
-
+        
               const matchedVideo = findMatchingVideo(repo.name, driveVideos);
-
+        
               let videoEmbed = '';
               if (matchedVideo && matchedVideo.id) {
                 const embedUrl = getVideoEmbedUrl(matchedVideo.id);
@@ -243,7 +250,7 @@ jobs:
                            '            </div>\n' +
                            '          </div>';
               }
-
+        
               newProjectCards += '        <div class="project-card">\n' +
                                 '          <div class="project-content">\n' +
                                 '            <h3><a href="' + repo.html_url + '" target="_blank" style="color: #ffd700; text-decoration: none;">' + name + '</a></h3>\n' +
@@ -257,12 +264,12 @@ jobs:
                                 '          </div>\n' +
                                 '        </div>\n';
             }
-
+        
             if (!insertNewProjects(newProjectCards)) {
               console.error('Failed to insert new projects into HTML');
               console.log('Continuing without adding new projects...');
             }
-
+        
             // Update timestamp
             const now = new Date().toLocaleString('en-US', {
               year: 'numeric',
@@ -273,14 +280,14 @@ jobs:
               timeZone: 'Asia/Colombo',
               timeZoneName: 'short'
             });
-
+        
             const metadataHtml = '<div class="portfolio-metadata">Last updated: <span class="last-updated">' + now + '</span></div>';
             if (html.includes('portfolio-metadata')) {
               html = html.replace(/<div class="portfolio-metadata">.*?<\/div>/, metadataHtml);
             } else {
               html = html.replace(/(<footer)/, metadataHtml + '\n\n    $1');
             }
-
+        
             fs.writeFileSync('index.html', html);
             console.log('Portfolio updated successfully! Processed ' + newRepos.length + ' project(s).');
             
@@ -290,8 +297,9 @@ jobs:
             process.exit(1);
           }
         }
-
+        
         main();
+
         SCRIPT_END
 
     - name: Run update script
@@ -318,4 +326,4 @@ jobs:
         git config --local user.name "GitHub Actions"
         git add index.html
         git commit -m "🤖 Auto-update portfolio with latest projects"
-        git push
+        git pushF
