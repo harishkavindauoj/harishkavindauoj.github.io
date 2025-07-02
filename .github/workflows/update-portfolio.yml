@@ -1,4 +1,4 @@
-name: Update Portfolio (Fixed Version)
+name: Update Portfolio (Queue - Latest 5 Projects)
 
 on:
   schedule:
@@ -38,6 +38,7 @@ jobs:
         const GITHUB_REPOS = JSON.parse(fs.readFileSync('repos.json', 'utf8'));
         const API_KEY = process.env.GOOGLE_DRIVE_API_KEY;
         const FOLDER_ID = process.env.GOOGLE_DRIVE_FOLDER_ID;
+        const MAX_PROJECTS = 5; // Total number of projects to maintain in portfolio
         
         let html = fs.readFileSync('index.html', 'utf8');
         
@@ -124,24 +125,124 @@ jobs:
           return 'https://drive.google.com/file/d/' + fileId + '/preview';
         }
         
-        function getExistingProjects() {
-          const existingRepos = new Set();
+        function getCurrentProjectsFromPortfolio() {
+          const projects = [];
           const githubUrlRegex = /href="https:\/\/github\.com\/harishkavindauoj\/([^"/?#]+)"/g;
           let match;
           
           while ((match = githubUrlRegex.exec(html)) !== null) {
             const repoName = match[1];
             if (repoName !== 'harishkavindauoj' && !repoName.includes('.github.io')) {
-              existingRepos.add(repoName);
+              // Try to find this repo in our GitHub data to get update date
+              const repoData = GITHUB_REPOS.find(r => r.name === repoName);
+              if (repoData) {
+                projects.push({
+                  name: repoName,
+                  updatedAt: new Date(repoData.updated_at),
+                  data: repoData
+                });
+              }
             }
           }
           
-          console.log('Found ' + existingRepos.size + ' existing projects in portfolio');
-          return existingRepos;
+          // Sort by update date (newest first) to maintain order
+          projects.sort((a, b) => b.updatedAt - a.updatedAt);
+          
+          console.log('Current projects in portfolio (' + projects.length + '):');
+          projects.forEach((p, i) => {
+            console.log('  ' + (i+1) + '. ' + p.name + ' (updated: ' + p.updatedAt.toDateString() + ')');
+          });
+          
+          return projects;
         }
         
-        function insertNewProjects(newProjectCards) {
-          console.log('Inserting new projects...');
+        function getLatestQualifyingRepos() {
+          return GITHUB_REPOS
+            .filter(repo => {
+              const repoName = repo.name.toLowerCase();
+              return !repo.fork && 
+                     !repo.private && 
+                     repo.description && 
+                     repo.description.length > 10 &&
+                     !repo.name.includes('.github.io') &&
+                     !repoName.includes('config') &&
+                     !repoName.includes('readme') &&
+                     repoName !== 'harishkavindauoj';
+            })
+            .sort((a, b) => new Date(b.updated_at) - new Date(a.updated_at))
+            .slice(0, MAX_PROJECTS); // Only keep top 5 latest
+        }
+        
+        function generateProjectsHtml(repos, driveVideos) {
+          let projectCards = '';
+          
+          for (const repo of repos) {
+            const name = formatRepoName(repo.name);
+            const description = repo.description;
+            const date = new Date(repo.updated_at).toLocaleDateString('en-US', {
+              year: 'numeric',
+              month: 'short',
+              day: 'numeric'
+            });
+      
+            console.log('🔄 Generating HTML for: "' + repo.name + '"');
+      
+            const matchedVideo = findMatchingVideo(repo.name, driveVideos);
+      
+            let videoEmbed = '';
+            if (matchedVideo && matchedVideo.id) {
+              const embedUrl = getVideoEmbedUrl(matchedVideo.id);
+              console.log('🎬 Adding Google Drive embed for "' + repo.name + '"');
+              
+              videoEmbed = '\n          <div class="video-container">\n' +
+                         '            <iframe width="100%" height="200" \n' +
+                         '              src="' + embedUrl + '" \n' +
+                         '              frameborder="0" \n' +
+                         '              allow="autoplay; encrypted-media" \n' +
+                         '              allowfullscreen \n' +
+                         '              style="border-radius: 8px; margin: 10px 0;">\n' +
+                         '            </iframe>\n' +
+                         '            <div class="video-info" style="font-size: 12px; color: #888; margin-top: 5px;">\n' +
+                         '              📹 ' + matchedVideo.name + '\n' +
+                         '            </div>\n' +
+                         '          </div>';
+            } else {
+              console.log('📝 No video found for "' + repo.name + '", showing placeholder');
+              videoEmbed = '\n          <div class="video-placeholder" style="width: 100%; height: 200px; background: linear-gradient(135deg, #1a1a1a, #2a2a2a); border-radius: 8px; margin: 10px 0; display: flex; align-items: center; justify-content: center; color: #666;">\n' +
+                         '            <div style="text-align: center;">\n' +
+                         '              <div style="font-size: 48px; margin-bottom: 10px;">🎬</div>\n' +
+                         '              <div>Demo video coming soon</div>\n' +
+                         '              <div style="font-size: 10px; margin-top: 5px;">Looking for: ' + repo.name + '</div>\n' +
+                         '            </div>\n' +
+                         '          </div>';
+            }
+      
+            projectCards += '        <div class="project-card">\n' +
+                              '          <div class="project-content">\n' +
+                              '            <h3><a href="' + repo.html_url + '" target="_blank" style="color: #ffd700; text-decoration: none;">' + name + '</a></h3>\n' +
+                              '            <p>' + description + '</p>\n' +
+                              '            <div class="project-video">' + videoEmbed + '</div>\n' +
+                              '            <div class="project-stats">\n' +
+                              '              <span>⭐ ' + repo.stargazers_count + '</span>\n' +
+                              '              <span>📅 ' + date + '</span>\n' +
+                              (repo.language ? '              <span>💻 ' + repo.language + '</span>\n' : '') +
+                              '            </div>\n' +
+                              '          </div>\n' +
+                              '        </div>\n';
+          }
+          
+          // Always add the "See More.." card at the end
+          projectCards += '        <div class="project-card">\n' +
+                '          <div class="project-content" style="display: flex; justify-content: center; align-items: center; height: 180px;">\n' +
+                '            <h3><a href="https://github.com/harishkavindauoj?tab=repositories" target="_blank" style="font-size: 4rem; color: #ffd700; text-decoration: none;">See More..</a></h3>\n' +
+                '          </div>\n' +
+                '        </div>\n';
+          
+          return projectCards;
+        }
+        
+        function replacePortfolioProjects(newProjectCards) {
+          console.log('Replacing portfolio projects...');
         
           const autoStart = '<!-- AUTO-GENERATED-START -->';
           const autoEnd = '<!-- AUTO-GENERATED-END -->';
@@ -151,7 +252,7 @@ jobs:
           const autoPattern = new RegExp(`${autoStart}[\\s\\S]*?${autoEnd}`, 'g');
         
           if (autoPattern.test(html)) {
-            console.log('Auto-generated block found. Replacing existing block...');
+            console.log('Auto-generated block found. Replacing entire block...');
             html = html.replace(autoPattern, fullBlock);
             return true;
           }
@@ -175,101 +276,49 @@ jobs:
         async function main() {
           try {
             const driveVideos = await fetchDriveVideos();
-            const existingProjects = getExistingProjects();
-        
-            const newRepos = GITHUB_REPOS
-              .filter(repo => {
-                const repoName = repo.name.toLowerCase();
-                return !repo.fork && 
-                       !repo.private && 
-                       repo.description && 
-                       repo.description.length > 10 &&
-                       !repo.name.includes('.github.io') &&
-                       !repoName.includes('config') &&
-                       !repoName.includes('readme') &&
-                       repoName !== 'harishkavindauoj' &&
-                       !existingProjects.has(repo.name);
-              })
-              .sort((a, b) => new Date(b.updated_at) - new Date(a.updated_at))
-              .slice(0, 5);
-        
-            console.log('Repository analysis:');
-            console.log('  - Total repos fetched: ' + GITHUB_REPOS.length);
-            console.log('  - Already in portfolio: ' + existingProjects.size);
-            console.log('  - New repos to add: ' + newRepos.length);
-        
-            if (newRepos.length === 0) {
-              console.log('No new projects to add. Portfolio is up to date!');
+            const currentProjects = getCurrentProjectsFromPortfolio();
+            const latestRepos = getLatestQualifyingRepos();
+            
+            console.log('\n=== QUEUE ANALYSIS ===');
+            console.log('Total qualifying repos: ' + GITHUB_REPOS.filter(r => !r.fork && !r.private && r.description && r.description.length > 10).length);
+            console.log('Current projects in portfolio: ' + currentProjects.length);
+            console.log('Latest ' + MAX_PROJECTS + ' qualifying projects:');
+            
+            latestRepos.forEach((repo, i) => {
+              const isInPortfolio = currentProjects.some(p => p.name === repo.name);
+              const status = isInPortfolio ? '✅ (already in portfolio)' : '🆕 (new)';
+              console.log('  ' + (i+1) + '. ' + repo.name + ' ' + status);
+            });
+            
+            // Check if there are any differences
+            const currentProjectNames = new Set(currentProjects.map(p => p.name));
+            const latestProjectNames = new Set(latestRepos.map(r => r.name));
+            
+            const projectsToAdd = latestRepos.filter(r => !currentProjectNames.has(r.name));
+            const projectsToRemove = currentProjects.filter(p => !latestProjectNames.has(p.name));
+            
+            console.log('\n=== QUEUE CHANGES ===');
+            if (projectsToAdd.length > 0) {
+              console.log('🆕 Projects to ADD: ' + projectsToAdd.map(r => r.name).join(', '));
+            }
+            if (projectsToRemove.length > 0) {
+              console.log('🗑️  Projects to REMOVE: ' + projectsToRemove.map(p => p.name).join(', '));
+            }
+            
+            if (projectsToAdd.length === 0 && projectsToRemove.length === 0) {
+              console.log('✨ No changes needed. Portfolio queue is up to date!');
               return;
             }
-        
-            console.log('Adding ' + newRepos.length + ' new repositories');
-        
-            let newProjectCards = '';
-            for (const repo of newRepos) {
-              const name = formatRepoName(repo.name);
-              const description = repo.description;
-              const date = new Date(repo.updated_at).toLocaleDateString('en-US', {
-                year: 'numeric',
-                month: 'short',
-                day: 'numeric'
-              });
-        
-              console.log('Processing repo: "' + repo.name + '"');
-        
-              const matchedVideo = findMatchingVideo(repo.name, driveVideos);
-        
-              let videoEmbed = '';
-              if (matchedVideo && matchedVideo.id) {
-                const embedUrl = getVideoEmbedUrl(matchedVideo.id);
-                console.log('Adding Google Drive embed for "' + repo.name + '"');
-                
-                videoEmbed = '\n          <div class="video-container">\n' +
-                           '            <iframe width="100%" height="200" \n' +
-                           '              src="' + embedUrl + '" \n' +
-                           '              frameborder="0" \n' +
-                           '              allow="autoplay; encrypted-media" \n' +
-                           '              allowfullscreen \n' +
-                           '              style="border-radius: 8px; margin: 10px 0;">\n' +
-                           '            </iframe>\n' +
-                           '            <div class="video-info" style="font-size: 12px; color: #888; margin-top: 5px;">\n' +
-                           '              📹 ' + matchedVideo.name + '\n' +
-                           '            </div>\n' +
-                           '          </div>';
-              } else {
-                console.log('No video found for "' + repo.name + '", showing placeholder');
-                videoEmbed = '\n          <div class="video-placeholder" style="width: 100%; height: 200px; background: linear-gradient(135deg, #1a1a1a, #2a2a2a); border-radius: 8px; margin: 10px 0; display: flex; align-items: center; justify-content: center; color: #666;">\n' +
-                           '            <div style="text-align: center;">\n' +
-                           '              <div style="font-size: 48px; margin-bottom: 10px;">🎬</div>\n' +
-                           '              <div>Demo video coming soon</div>\n' +
-                           '              <div style="font-size: 10px; margin-top: 5px;">Looking for: ' + repo.name + '</div>\n' +
-                           '            </div>\n' +
-                           '          </div>';
-              }
-        
-              newProjectCards += '        <div class="project-card">\n' +
-                                '          <div class="project-content">\n' +
-                                '            <h3><a href="' + repo.html_url + '" target="_blank" style="color: #ffd700; text-decoration: none;">' + name + '</a></h3>\n' +
-                                '            <p>' + description + '</p>\n' +
-                                '            <div class="project-video">' + videoEmbed + '</div>\n' +
-                                '            <div class="project-stats">\n' +
-                                '              <span>⭐ ' + repo.stargazers_count + '</span>\n' +
-                                '              <span>📅 ' + date + '</span>\n' +
-                                (repo.language ? '              <span>💻 ' + repo.language + '</span>\n' : '') +
-                                '            </div>\n' +
-                                '          </div>\n' +
-                                '        </div>\n';
-            }
-        
-            newProjectCards += '        <div class="project-card">\n' +
-                  '          <div class="project-content" style="display: flex; justify-content: center; align-items: center; height: 180px;">\n' +
-                  '            <h3><a href="https://github.com/harishkavindauoj?tab=repositories" target="_blank" style="font-size: 4rem; color: #ffd700; text-decoration: none;">See More..</a></h3>\n' +
-                  '          </div>\n' +
-                  '        </div>\n';
-        
-            if (!insertNewProjects(newProjectCards)) {
-              console.error('Failed to insert new projects into HTML');
-              console.log('Continuing without adding new projects...');
+            
+            console.log('\n=== UPDATING PORTFOLIO QUEUE ===');
+            console.log('Maintaining latest ' + MAX_PROJECTS + ' projects in chronological order...');
+            
+            // Generate HTML for the latest 5 projects
+            const newProjectCards = generateProjectsHtml(latestRepos, driveVideos);
+            
+            if (!replacePortfolioProjects(newProjectCards)) {
+              console.error('❌ Failed to replace projects in HTML');
+              return;
             }
         
             // Update timestamp
@@ -283,7 +332,7 @@ jobs:
               timeZoneName: 'short'
             });
         
-            const metadataHtml = '<div class="portfolio-metadata">Last updated: <span class="last-updated">' + now + '</span></div>';
+            const metadataHtml = '<div class="portfolio-metadata">Last updated: <span class="last-updated">' + now + '</span> | Showing latest ' + MAX_PROJECTS + ' projects</div>';
             if (html.includes('portfolio-metadata')) {
               html = html.replace(/<div class="portfolio-metadata">.*?<\/div>/, metadataHtml);
             } else {
@@ -291,10 +340,12 @@ jobs:
             }
         
             fs.writeFileSync('index.html', html);
-            console.log('Portfolio updated successfully! Processed ' + newRepos.length + ' project(s).');
+            console.log('\n✅ Portfolio queue updated successfully!');
+            console.log('📊 Summary: Maintaining ' + latestRepos.length + ' projects in queue');
+            console.log('📈 Current queue (newest → oldest): ' + latestRepos.map(r => r.name).join(' → '));
             
           } catch (error) {
-            console.error('Error updating portfolio:', error.message);
+            console.error('❌ Error updating portfolio queue:', error.message);
             console.error('Stack trace:', error.stack);
             process.exit(1);
           }
@@ -328,5 +379,5 @@ jobs:
         git config --local user.email "actions@github.com"
         git config --local user.name "GitHub Actions"
         git add index.html
-        git commit -m "🤖 Auto-update portfolio with latest projects"
+        git commit -m "🔄 Update portfolio queue with latest 5 projects"
         git push
