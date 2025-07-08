@@ -305,10 +305,11 @@ canvas {
     margin: auto;
     filter: brightness(0.9);
     transition: all 0.3s ease;
+    filter: brightness(0) invert(1);
 }
 
 .tech-item:hover img {
-    filter: brightness(1.1);
+    filter: brightness(0) invert(1) drop-shadow(0 0 5px #ffd700);
     transform: scale(1.1);
 }
 
